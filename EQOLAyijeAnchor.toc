@@ -1,0 +1,13 @@
+## Interface: 120005, 120001, 120000
+## Title: EQOL Ayije Anchor
+## Notes: Combines EQOL custom unit frame anchoring and Ayije cast bar anchoring. Configure via Esc -> Options -> AddOns or /eaya.
+## Author: qiyu
+## Version: 0.1.0
+## DefaultState: enabled
+## SavedVariables: EQOLAyijeAnchorDB
+## Dependencies: EnhanceQoL, Ayije_CDM
+
+Core.lua
+EQOL.lua
+CastBar.lua
+Options.lua
