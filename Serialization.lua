@@ -30,6 +30,9 @@ local function ValidatePayload(payload)
     if payload.meta.addon ~= EXPORT_ADDON then
         return nil, "Export belongs to another addon"
     end
+    if payload.meta.version ~= EXPORT_VERSION then
+        return nil, "Unsupported export version: " .. tostring(payload.meta.version)
+    end
 
     local cleanedSources, eqolErr = ns.eqol.ValidateSources(payload.data.eqol and payload.data.eqol.sources)
     if not cleanedSources then
