@@ -59,3 +59,29 @@ assert(profile.castbar.point == "TOP", "expected migrated castbar point to survi
 assert(profile.castbar.relativePoint == "BOTTOM", "expected migrated castbar relativePoint to survive")
 assert(profile.castbar.x == 300, "expected invalid castbar x to be clamped")
 assert(profile.castbar.y == -1, "expected migrated castbar y to survive")
+
+local profiles = ctx.ns.profiles
+
+assert(profiles.CreateProfile("Arena") == true, "expected CreateProfile to succeed")
+assert(profiles.GetProfile("Arena") ~= nil, "expected Arena profile to exist")
+
+assert(profiles.SwitchProfile("Arena") == true, "expected SwitchProfile to succeed")
+assert(ctx.ns.profiles.GetActiveProfileName() == "Arena", "expected active profile to change to Arena")
+
+assert(profiles.RenameProfile("Arena", "Shuffle") == true, "expected RenameProfile to succeed")
+assert(profiles.GetProfile("Arena") == nil, "expected old Arena profile to be removed")
+assert(profiles.GetProfile("Shuffle") ~= nil, "expected Shuffle profile to exist")
+assert(ctx.ns.profiles.GetActiveProfileName() == "Shuffle", "expected active profile to update to Shuffle")
+
+assert(profiles.DuplicateProfile("Shuffle", "Raid") == true, "expected DuplicateProfile to succeed")
+assert(profiles.GetProfile("Raid") ~= nil, "expected Raid profile to exist")
+
+assert(profiles.DeleteProfile("Raid") == true, "expected DeleteProfile on Raid to succeed")
+assert(profiles.GetProfile("Raid") == nil, "expected Raid profile to be removed")
+
+assert(profiles.DeleteProfile("Shuffle") == true, "expected DeleteProfile on Shuffle to succeed")
+assert(ctx.ns.profiles.GetActiveProfileName() == "Default", "expected active profile to fall back to Default")
+
+local ok, err = profiles.DeleteProfile("Default")
+assert(ok == nil, "expected deleting the last remaining profile to fail")
+assert(type(err) == "string" and err:lower():find("last", 1, true), "expected last-profile error message")

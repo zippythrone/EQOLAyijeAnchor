@@ -42,12 +42,195 @@ local function NormalizeProfile(profile)
     return profile
 end
 
+local function ValidateProfileName(name)
+    name = type(name) == "string" and name:gsub("^%s+", ""):gsub("%s+$", "") or ""
+    if name == "" then
+        return nil, "Profile name cannot be empty"
+    end
+    return name
+end
+
 function profiles.BuildDefaultProfile()
     return BuildDefaultProfile()
 end
 
 function profiles.NormalizeProfile(profile)
     return NormalizeProfile(profile)
+end
+
+function profiles.ValidateProfileName(name)
+    return ValidateProfileName(name)
+end
+
+function profiles.GetProfile(name)
+    local profileName, err = ValidateProfileName(name)
+    if not profileName then
+        return nil, err
+    end
+
+    local db = profiles.GetDB()
+    return db.profiles[profileName]
+end
+
+function profiles.ListProfileNames()
+    local db = profiles.GetDB()
+    local names = {}
+    for name in pairs(db.profiles) do
+        names[#names + 1] = name
+    end
+    table.sort(names, function(lhs, rhs)
+        local lhsLower = lhs:lower()
+        local rhsLower = rhs:lower()
+        if lhsLower == rhsLower then
+            return lhs < rhs
+        end
+        return lhsLower < rhsLower
+    end)
+    return names
+end
+
+function profiles.SwitchProfile(name)
+    local profileName, err = ValidateProfileName(name)
+    if not profileName then
+        return nil, err
+    end
+
+    local db = profiles.GetDB()
+    if type(db.profiles[profileName]) ~= "table" then
+        return nil, "Unknown profile: " .. profileName
+    end
+
+    db.activeProfile = profileName
+
+    if type(ns.eqol.ClearRuntimeState) == "function" then
+        ns.eqol.ClearRuntimeState()
+    end
+    if type(ns.NotifyChanged) == "function" then
+        ns.NotifyChanged()
+    end
+    if type(ns.RefreshUI) == "function" then
+        ns.RefreshUI()
+    end
+
+    return true
+end
+
+function profiles.CreateProfile(name, sourceName)
+    local profileName, err = ValidateProfileName(name)
+    if not profileName then
+        return nil, err
+    end
+
+    local db = profiles.GetDB()
+    if type(db.profiles[profileName]) == "table" then
+        return nil, "Profile already exists: " .. profileName
+    end
+
+    local sourceProfile = profiles.GetProfile(sourceName)
+    if type(sourceProfile) ~= "table" then
+        sourceProfile = profiles.GetActiveProfile()
+    end
+
+    db.profiles[profileName] = ns.DeepCopy(sourceProfile)
+    return true
+end
+
+function profiles.RenameProfile(oldName, newName)
+    local oldProfileName, oldErr = ValidateProfileName(oldName)
+    if not oldProfileName then
+        return nil, oldErr
+    end
+
+    local newProfileName, newErr = ValidateProfileName(newName)
+    if not newProfileName then
+        return nil, newErr
+    end
+
+    local db = profiles.GetDB()
+    local existing = db.profiles[oldProfileName]
+    if type(existing) ~= "table" then
+        return nil, "Unknown profile: " .. oldProfileName
+    end
+    if type(db.profiles[newProfileName]) == "table" then
+        return nil, "Profile already exists: " .. newProfileName
+    end
+
+    db.profiles[newProfileName] = existing
+    db.profiles[oldProfileName] = nil
+    if db.activeProfile == oldProfileName then
+        db.activeProfile = newProfileName
+    end
+
+    if type(ns.RefreshUI) == "function" then
+        ns.RefreshUI()
+    end
+
+    return true
+end
+
+function profiles.DuplicateProfile(sourceName, newName)
+    local sourceProfileName, sourceErr = ValidateProfileName(sourceName)
+    if not sourceProfileName then
+        return nil, sourceErr
+    end
+
+    local newProfileName, newErr = ValidateProfileName(newName)
+    if not newProfileName then
+        return nil, newErr
+    end
+
+    local sourceProfile = profiles.GetProfile(sourceProfileName)
+    if type(sourceProfile) ~= "table" then
+        return nil, "Unknown profile: " .. sourceProfileName
+    end
+
+    local db = profiles.GetDB()
+    if type(db.profiles[newProfileName]) == "table" then
+        return nil, "Profile already exists: " .. newProfileName
+    end
+
+    db.profiles[newProfileName] = ns.DeepCopy(sourceProfile)
+    return true
+end
+
+function profiles.DeleteProfile(name)
+    local profileName, err = ValidateProfileName(name)
+    if not profileName then
+        return nil, err
+    end
+
+    local db = profiles.GetDB()
+    if type(db.profiles[profileName]) ~= "table" then
+        return nil, "Unknown profile: " .. profileName
+    end
+
+    local names = profiles.ListProfileNames()
+    if #names <= 1 then
+        return nil, "Cannot delete the last remaining profile"
+    end
+
+    if db.activeProfile == profileName then
+        for _, candidate in ipairs(names) do
+            if candidate ~= profileName then
+                db.activeProfile = candidate
+                break
+            end
+        end
+    end
+
+    db.profiles[profileName] = nil
+
+    if type(ns.eqol.ClearRuntimeState) == "function" then
+        ns.eqol.ClearRuntimeState()
+    end
+    if type(ns.NotifyChanged) == "function" then
+        ns.NotifyChanged()
+    end
+    if type(ns.RefreshUI) == "function" then
+        ns.RefreshUI()
+    end
+
+    return true
 end
 
 function profiles.GetDB()
