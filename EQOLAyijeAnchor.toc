@@ -11,4 +11,5 @@ Core.lua
 EQOLConfig.lua
 EQOL.lua
 CastBar.lua
+Profiles.lua
 Options.lua
