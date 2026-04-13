@@ -48,6 +48,29 @@ local function NormalizeStoredOffset(value, fallback)
     return value
 end
 
+local function GetActiveProfile()
+    local profiles = ns.profiles
+    if not profiles or type(profiles.GetActiveProfile) ~= "function" then
+        return nil
+    end
+
+    local profile = profiles.GetActiveProfile()
+    if type(profile) ~= "table" then
+        return nil
+    end
+
+    profile.castbar = type(profile.castbar) == "table" and profile.castbar or castbar.BuildDefaultConfig()
+    return profile
+end
+
+local function GetActiveConfig()
+    local profile = GetActiveProfile()
+    if not profile then
+        return nil
+    end
+    return profile.castbar
+end
+
 local function ValidateOffset(value, fieldName)
     local n = tonumber(value)
     if not n or n ~= math.floor(n) then
@@ -70,14 +93,30 @@ function castbar.BuildDefaultConfig()
 end
 
 function castbar.GetDB()
-    local profiles = ns.profiles
-    local profile = profiles and type(profiles.GetActiveProfile) == "function" and profiles.GetActiveProfile() or nil
-    if type(profile) ~= "table" then
-        return castbar.BuildDefaultConfig()
+    if not castbar._dbProxy then
+        castbar._dbProxy = setmetatable({}, {
+            __index = function(_, key)
+                local db = GetActiveConfig()
+                if db then
+                    return db[key]
+                end
+                return castbar.DEFAULTS[key]
+            end,
+            __newindex = function(_, key, value)
+                local ok, err = castbar.TrySetField(key, value)
+                if not ok then
+                    error(err, 2)
+                end
+            end,
+            __pairs = function()
+                local db = GetActiveConfig() or castbar.BuildDefaultConfig()
+                return next, db, nil
+            end,
+            __metatable = false,
+        })
     end
 
-    profile.castbar = type(profile.castbar) == "table" and profile.castbar or castbar.BuildDefaultConfig()
-    return profile.castbar
+    return castbar._dbProxy
 end
 
 function castbar.ValidateConfig(t)
@@ -145,6 +184,31 @@ function castbar.NormalizeDB(db)
 
     db.x = NormalizeStoredOffset(db.x, castbar.DEFAULTS.x)
     db.y = NormalizeStoredOffset(db.y, castbar.DEFAULTS.y)
+end
+
+function castbar.TrySetField(field, value)
+    if type(field) ~= "string" or castbar.DEFAULTS[field] == nil then
+        return nil, "Unknown field: " .. tostring(field)
+    end
+
+    local profile = GetActiveProfile()
+    if not profile then
+        return nil, "Active profile is not available"
+    end
+
+    local candidate = castbar.BuildDefaultConfig()
+    for k, v in pairs(profile.castbar) do
+        candidate[k] = v
+    end
+    candidate[field] = value
+
+    local cleaned, err = castbar.ValidateConfig(candidate)
+    if not cleaned then
+        return nil, err
+    end
+
+    profile.castbar = cleaned
+    return true
 end
 
 function castbar.ResolveTargetFrame(target)

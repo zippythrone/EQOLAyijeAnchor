@@ -9,8 +9,9 @@
 
 Core.lua
 EQOLConfig.lua
-EQOL.lua
 CastBar.lua
 Profiles.lua
 Serialization.lua
+EQOLRuntime.lua
+EQOLHooks.lua
 Options.lua
