@@ -7,6 +7,7 @@ end
 local testsDir = currentDir()
 local knownTests = {
     { name = "eqol_config", path = testsDir .. "/test_eqol_config.lua" },
+    { name = "eqol_runtime", path = testsDir .. "/test_eqol_runtime.lua" },
     { name = "castbar", path = testsDir .. "/test_castbar.lua" },
     { name = "profiles", path = testsDir .. "/test_profiles.lua" },
     { name = "serialization", path = testsDir .. "/test_serialization.lua" },

@@ -240,8 +240,8 @@ local function ApplyMirroredPartyRacialsAnchor(source, sourceFrame, cfg, targetF
         MarkDirty(source)
         if lastAbsoluteAnchors[source] then
             ApplyAbsoluteAnchor(sourceFrame, lastAbsoluteAnchors[source])
+            EmitWarning(source, cfg.target, "Target frame could not be measured", "Keeping the last successfully applied position.")
         end
-        EmitWarning(source, cfg.target, "Target frame could not be measured", "Keeping the last successfully applied position.")
         return false
     end
 
