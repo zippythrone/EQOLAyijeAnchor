@@ -1,25 +1,35 @@
-local root = "AddOns/EQOLAyijeAnchor/tests/"
+local function currentDir()
+    local source = debug.getinfo(1, "S").source
+    source = source:sub(2)
+    return source:match("^(.*)/[^/]+$") or "."
+end
 
+local testsDir = currentDir()
 local knownTests = {
-    eqol_config = root .. "test_eqol_config.lua",
+    { name = "eqol_config", path = testsDir .. "/test_eqol_config.lua" },
 }
 
 local function resolveTest(arg)
     if arg:match("%.lua$") then
-        if arg:match("^AddOns/") then
+        if arg:match("^/") then
             return arg
         end
-        return root .. arg
+        return testsDir .. "/" .. arg
     end
-    return knownTests[arg] or (root .. "test_" .. arg .. ".lua")
+    for _, test in ipairs(knownTests) do
+        if test.name == arg then
+            return test.path
+        end
+    end
+    return testsDir .. "/test_" .. arg .. ".lua"
 end
 
 local args = {...}
 local files = {}
 
 if #args == 0 then
-    for _, path in pairs(knownTests) do
-        files[#files + 1] = path
+    for _, test in ipairs(knownTests) do
+        files[#files + 1] = test.path
     end
 else
     for _, arg in ipairs(args) do

@@ -1,5 +1,11 @@
 local M = {}
 
+local function currentDir()
+    local source = debug.getinfo(1, "S").source
+    source = source:sub(2)
+    return source:match("^(.*)/[^/]+$") or "."
+end
+
 local function makeFrame(name)
     local frame = {
         _name = name,
@@ -44,6 +50,8 @@ local function makeFrame(name)
 end
 
 function M.newContext()
+    local testsDir = currentDir()
+    local addonRoot = testsDir:match("^(.*)/tests$") or testsDir
     local ns = {
         eqol = {},
         castbar = {},
@@ -92,7 +100,7 @@ function M.newContext()
     local context = { ns = ns }
 
     function context.load(relpath)
-        local chunk, err = loadfile("AddOns/EQOLAyijeAnchor/" .. relpath)
+        local chunk, err = loadfile(addonRoot .. "/" .. relpath)
         assert(chunk, err)
         return chunk("EQOLAyijeAnchor", ns)
     end
