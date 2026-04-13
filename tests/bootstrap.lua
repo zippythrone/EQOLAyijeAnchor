@@ -113,12 +113,244 @@ function M.newContext()
         return makeFrame(name or "Frame")
     end
 
-    _G.Settings = _G.Settings or {
-        RegisterCanvasLayoutCategory = function() end,
-        RegisterAddOnCategory = function() end,
+    local settingsState = {
+        nextCategoryID = 1,
+        categories = {},
+        openedCategoryID = nil,
+        addOnCategories = {},
     }
 
+    local function makeCategory(name)
+        local category = {
+            _id = settingsState.nextCategoryID,
+            name = name,
+            initializers = {},
+            controls = {},
+        }
+        settingsState.nextCategoryID = settingsState.nextCategoryID + 1
+
+        function category:GetID()
+            return self._id
+        end
+
+        return category
+    end
+
+    local function pushControl(category, control)
+        if category and category.controls then
+            category.controls[#category.controls + 1] = control
+        end
+        return control
+    end
+
+    _G.Settings = _G.Settings or {}
+    _G.Settings.VarType = _G.Settings.VarType or {
+        Boolean = "boolean",
+        Number = "number",
+        String = "string",
+    }
+    _G.Settings.RegisterCanvasLayoutCategory = _G.Settings.RegisterCanvasLayoutCategory or function() end
+    _G.Settings.RegisterAddOnCategory = function(category)
+        settingsState.addOnCategories[#settingsState.addOnCategories + 1] = category
+    end
+    _G.Settings.RegisterVerticalLayoutCategory = function(name)
+        local category = makeCategory(name)
+        local layout = {
+            category = category,
+            initializers = category.initializers,
+        }
+
+        function layout:AddInitializer(initializer)
+            self.initializers[#self.initializers + 1] = initializer
+            return initializer
+        end
+
+        settingsState.categories[#settingsState.categories + 1] = category
+        return category, layout
+    end
+    _G.Settings.CreateElementInitializer = function(template, data)
+        return {
+            template = template,
+            data = data or {},
+        }
+    end
+    _G.Settings.RegisterProxySetting = function(category, key, varType, displayName, defaultValue, getter, setter)
+        local setting = {
+            category = category,
+            key = key,
+            varType = varType,
+            displayName = displayName,
+            defaultValue = defaultValue,
+            getter = getter,
+            setter = setter,
+            value = defaultValue,
+        }
+
+        function setting:GetValue()
+            if type(self.getter) == "function" then
+                return self.getter()
+            end
+            return self.value
+        end
+
+        function setting:SetValue(value, initializing)
+            self.value = value
+            if type(self.setter) == "function" then
+                return self.setter(value, initializing)
+            end
+        end
+
+        function setting:GetVariable()
+            return self.key
+        end
+
+        return setting
+    end
+    _G.Settings.CreateCheckbox = function(category, setting, desc)
+        return pushControl(category, {
+            kind = "checkbox",
+            category = category,
+            setting = setting,
+            desc = desc,
+        })
+    end
+    _G.Settings.CreateDropdown = function(category, setting, optionsFn, desc)
+        local control = {
+            kind = "dropdown",
+            category = category,
+            setting = setting,
+            optionsFn = optionsFn,
+            desc = desc,
+        }
+
+        function control:GetOptions()
+            if type(self.optionsFn) == "function" then
+                return self.optionsFn()
+            end
+            return self.optionsFn
+        end
+
+        control.options = control:GetOptions()
+        return pushControl(category, control)
+    end
+    _G.Settings.CreateSliderOptions = function(minValue, maxValue, step)
+        local sliderOptions = {
+            minValue = minValue,
+            maxValue = maxValue,
+            step = step,
+        }
+
+        function sliderOptions:SetLabelFormatter(formatter)
+            self.labelFormatter = formatter
+        end
+
+        return sliderOptions
+    end
+    _G.Settings.CreateSlider = function(category, setting, sliderOptions, desc)
+        return pushControl(category, {
+            kind = "slider",
+            category = category,
+            setting = setting,
+            sliderOptions = sliderOptions,
+            desc = desc,
+        })
+    end
+    _G.Settings.CreateControlTextContainer = function()
+        local container = {
+            data = {},
+        }
+
+        function container:Add(value, label, tooltip)
+            self.data[value] = {
+                label = label,
+                tooltip = tooltip,
+            }
+            return self.data[value]
+        end
+
+        function container:GetData()
+            return self.data
+        end
+
+        return container
+    end
+    _G.Settings.OpenToCategory = function(categoryID)
+        settingsState.openedCategoryID = categoryID
+    end
+    _G.Settings._state = settingsState
+
+    _G.CreateSettingsButtonInitializer = _G.CreateSettingsButtonInitializer or function(label, text, click, desc, searchtags)
+        return {
+            template = "SettingsButtonControlTemplate",
+            label = label,
+            text = text,
+            click = click,
+            desc = desc,
+            searchtags = searchtags,
+        }
+    end
+
     _G.StaticPopupDialogs = _G.StaticPopupDialogs or {}
+    _G.StaticPopup_Show = _G.StaticPopup_Show or function(key)
+        local dialog = _G.StaticPopupDialogs[key]
+        if not dialog then
+            return nil
+        end
+
+        local popup = {
+            key = key,
+            dialog = dialog,
+            hidden = false,
+        }
+
+        local editBox = {
+            text = "",
+        }
+
+        function editBox:GetText()
+            return self.text
+        end
+
+        function editBox:SetText(text)
+            self.text = text
+        end
+
+        function editBox:HighlightText() end
+        function editBox:SetFocus() end
+        function editBox:GetParent()
+            return popup
+        end
+
+        popup.EditBox = editBox
+        popup.editBox = editBox
+
+        function popup:GetEditBox()
+            return editBox
+        end
+
+        function popup:Hide()
+            self.hidden = true
+        end
+
+        function popup:Accept()
+            if type(dialog.OnAccept) == "function" then
+                return dialog.OnAccept(self)
+            end
+        end
+
+        function popup:SubmitText()
+            if type(dialog.EditBoxOnEnterPressed) == "function" then
+                return dialog.EditBoxOnEnterPressed(editBox)
+            end
+        end
+
+        if type(dialog.OnShow) == "function" then
+            dialog.OnShow(popup)
+        end
+
+        _G.__lastStaticPopup = popup
+        return popup
+    end
     _G.SlashCmdList = _G.SlashCmdList or {}
 
     _G.C_Timer = _G.C_Timer or {}
@@ -149,6 +381,15 @@ function M.newContext()
     _G.InCombatLockdown = _G.InCombatLockdown or function()
         return false
     end
+
+    _G.OKAY = _G.OKAY or "OK"
+    _G.CANCEL = _G.CANCEL or "Cancel"
+    _G.DELETE = _G.DELETE or "Delete"
+    _G.MinimalSliderWithSteppersMixin = _G.MinimalSliderWithSteppersMixin or {
+        Label = {
+            Right = "Right",
+        },
+    }
 
     local context = { ns = ns }
 

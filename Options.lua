@@ -1,4 +1,6 @@
 local ADDON_NAME, ns = ...
+local options = ns.options or {}
+ns.options = options
 
 local SETTING_VAR_PREFIX = "EQOLAyijeAnchor_"
 
@@ -31,97 +33,6 @@ local function GetPopupEditBox(popup)
     if popup.GetEditBox then return popup:GetEditBox() end
     return nil
 end
-
-local function ImportSettingsFromPopup(popup)
-    local eb = GetPopupEditBox(popup)
-    local input = (eb and eb:GetText()) or ""
-    local parsed, err = ns.DeserializeSettings(input)
-    if not parsed then
-        PrintError("Import failed: " .. tostring(err))
-        return false
-    end
-
-    local ok, applyErr = ns.ApplyParsedSettings(parsed)
-    if not ok then
-        PrintError("Import failed: " .. tostring(applyErr))
-        return false
-    end
-
-    if ns.RefreshUI then
-        ns.RefreshUI()
-    end
-    PrintSuccess("Imported settings.")
-    return true
-end
-
-StaticPopupDialogs["EQOLAYIJEANCHOR_EXPORT"] = {
-    text = "EQOL Ayije Anchor - Export string\n(Ctrl+C to copy, Esc to close)",
-    button1 = OKAY,
-    hasEditBox = true,
-    editBoxWidth = 350,
-    OnShow = function(self)
-        local eb = GetPopupEditBox(self)
-        if not eb then
-            return
-        end
-
-        local exported, err = ns.SerializeSettings()
-        if not exported then
-            eb:SetText("")
-            PrintError("Export failed: " .. tostring(err))
-            return
-        end
-
-        eb:SetText(exported)
-        eb:HighlightText()
-        eb:SetFocus()
-    end,
-    EditBoxOnEscapePressed = function(self)
-        self:GetParent():Hide()
-    end,
-    EditBoxOnEnterPressed = function(self)
-        self:GetParent():Hide()
-    end,
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-    preferredIndex = 3,
-}
-
-StaticPopupDialogs["EQOLAYIJEANCHOR_IMPORT"] = {
-    text = "EQOL Ayije Anchor - Paste import string",
-    button1 = "Import",
-    button2 = CANCEL,
-    hasEditBox = true,
-    editBoxWidth = 350,
-    OnShow = function(self)
-        local eb = GetPopupEditBox(self)
-        if not eb then
-            return
-        end
-        eb:SetText("")
-        eb:SetFocus()
-    end,
-    EditBoxOnEscapePressed = function(self)
-        self:GetParent():Hide()
-    end,
-    EditBoxOnEnterPressed = function(self)
-        local parent = self:GetParent()
-        if not parent then
-            return
-        end
-        if ImportSettingsFromPopup(parent) then
-            parent:Hide()
-        end
-    end,
-    OnAccept = function(self)
-        return not ImportSettingsFromPopup(self)
-    end,
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-    preferredIndex = 3,
-}
 
 local function GetPreviewBorder()
     if previewBorder then
@@ -462,8 +373,43 @@ local function MakePreviewSetting(category, key, selection)
     return setting
 end
 
+options.MakeEQOLBooleanProxySetting = MakeEQOLBooleanProxySetting
+options.MakeEQOLStringProxySetting = MakeEQOLStringProxySetting
+options.MakeEQOLNumberProxySetting = MakeEQOLNumberProxySetting
+options.MakeCastBarStringProxySetting = MakeCastBarStringProxySetting
+options.MakeCastBarNumberProxySetting = MakeCastBarNumberProxySetting
+
+options.PrintError = PrintError
+options.PrintSuccess = PrintSuccess
+options.GetPopupEditBox = GetPopupEditBox
+options.BuildDropdownOptionsFn = BuildDropdownOptionsFn
+options.RegisterProxySetting = RegisterProxySetting
+options.GetEQOLSourceDefaultField = GetEQOLSourceDefaultField
+options.SelectionsEqual = SelectionsEqual
+options.CopySelection = CopySelection
+options.MakePreviewSetting = MakePreviewSetting
+
 ns.categoryID = nil
 ns.category = nil
+ns.profileCategoryID = nil
+
+function options.RegisterCategory(category, name, role)
+    if not category or not Settings or not Settings.RegisterAddOnCategory then
+        return
+    end
+
+    Settings.RegisterAddOnCategory(category)
+    if role == "main" then
+        ns.category = category
+        ns.categoryID = category:GetID()
+        options.mainCategoryID = ns.categoryID
+        options.mainCategoryName = name
+    elseif role == "profiles" then
+        ns.profileCategoryID = category:GetID()
+        options.profileCategoryID = ns.profileCategoryID
+        options.profileCategoryName = name
+    end
+end
 
 function ns.OpenSettings()
     if not Settings or not Settings.OpenToCategory then
@@ -481,225 +427,15 @@ function ns.RefreshUI()
     RepaintOptionsUI(true)
 end
 
+options.RefreshOptionsUI = RepaintOptionsUI
+
 local coreNotify = ns.NotifyChanged
 function ns.NotifyChanged()
     coreNotify()
     RefreshPreviewBorder()
 end
 
-local function BuildPanel()
-    if not Settings or not Settings.RegisterVerticalLayoutCategory then
-        return
-    end
-
-    local category, layout = Settings.RegisterVerticalLayoutCategory("EQOL Ayije Anchor")
-    ns.category = category
-
-    layout:AddInitializer(Settings.CreateElementInitializer(
-        "SettingsListSectionHeaderTemplate",
-        { name = "EQOL Frames" }
-    ))
-
-    for _, source in ipairs(ns.eqol.SOURCE_ORDER) do
-        local sourceLabel = ns.eqol.SOURCE_LABELS[source] or source
-
-        layout:AddInitializer(Settings.CreateElementInitializer(
-            "SettingsListSectionHeaderTemplate",
-            { name = sourceLabel }
-        ))
-
-        local enabledSetting = MakeEQOLBooleanProxySetting(category, source, "enabled", "Enable override")
-        Settings.CreateCheckbox(
-            category,
-            enabledSetting,
-            "Enable companion anchoring for this EQOL frame."
-        )
-
-        local targetSetting = MakeEQOLStringProxySetting(category, source, "target", "Target frame")
-        local eqolTargetOrder = ns.eqol.GetTargetOrderForSource and ns.eqol.GetTargetOrderForSource(source) or ns.eqol.TARGET_ORDER
-        Settings.CreateDropdown(
-            category,
-            targetSetting,
-            BuildDropdownOptionsFn(eqolTargetOrder, ns.eqol.TARGET_LABELS),
-            "Frame to anchor this EQOL unit frame to."
-        )
-
-        local pointSetting = MakeEQOLStringProxySetting(category, source, "point", "Source point")
-        Settings.CreateDropdown(
-            category,
-            pointSetting,
-            BuildDropdownOptionsFn(ns.POINT_ORDER, ns.POINT_LABELS),
-            "Anchor point on the EQOL source frame."
-        )
-
-        local relativePointSetting = MakeEQOLStringProxySetting(category, source, "relativePoint", "Target point")
-        Settings.CreateDropdown(
-            category,
-            relativePointSetting,
-            BuildDropdownOptionsFn(ns.POINT_ORDER, ns.POINT_LABELS),
-            "Anchor point on the selected target frame."
-        )
-
-        local xSetting = MakeEQOLNumberProxySetting(category, source, "x", "X offset")
-        do
-            local options = Settings.CreateSliderOptions(-3000, 3000, 1)
-            options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right)
-            Settings.CreateSlider(category, xSetting, options, "Horizontal offset in pixels.")
-        end
-
-        local ySetting = MakeEQOLNumberProxySetting(category, source, "y", "Y offset")
-        do
-            local options = Settings.CreateSliderOptions(-3000, 3000, 1)
-            options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right)
-            Settings.CreateSlider(category, ySetting, options, "Vertical offset in pixels.")
-        end
-
-        local previewSetting = MakePreviewSetting(category, "eqol_" .. source, { kind = "eqol", source = source })
-        Settings.CreateCheckbox(
-            category,
-            previewSetting,
-            "Highlight the currently selected target frame for this source. Only one preview can be active at a time."
-        )
-    end
-
-    layout:AddInitializer(Settings.CreateElementInitializer(
-        "SettingsListSectionHeaderTemplate",
-        { name = "Ayije Cast Bar" }
-    ))
-
-    local castbarTargetSetting = MakeCastBarStringProxySetting(category, "target", "Target frame")
-    Settings.CreateDropdown(
-        category,
-        castbarTargetSetting,
-        BuildDropdownOptionsFn(ns.castbar.TARGET_ORDER, CASTBAR_TARGET_LABELS),
-        "Frame to anchor the cast bar to. 'screen' and 'resources' fall through to Ayije's own positioning."
-    )
-
-    local castbarPointSetting = MakeCastBarStringProxySetting(category, "point", "Cast bar point")
-    Settings.CreateDropdown(
-        category,
-        castbarPointSetting,
-        BuildDropdownOptionsFn(ns.POINT_ORDER, ns.POINT_LABELS),
-        "Anchor point on the cast bar itself."
-    )
-
-    local castbarRelativePointSetting = MakeCastBarStringProxySetting(category, "relativePoint", "Target point")
-    Settings.CreateDropdown(
-        category,
-        castbarRelativePointSetting,
-        BuildDropdownOptionsFn(ns.POINT_ORDER, ns.POINT_LABELS),
-        "Anchor point on the selected target frame."
-    )
-
-    local castbarXSetting = MakeCastBarNumberProxySetting(category, "x", "X offset")
-    do
-        local options = Settings.CreateSliderOptions(ns.castbar.OFFSET_MIN, ns.castbar.OFFSET_MAX, 1)
-        options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right)
-        Settings.CreateSlider(category, castbarXSetting, options, "Horizontal offset in pixels.")
-    end
-
-    local castbarYSetting = MakeCastBarNumberProxySetting(category, "y", "Y offset")
-    do
-        local options = Settings.CreateSliderOptions(ns.castbar.OFFSET_MIN, ns.castbar.OFFSET_MAX, 1)
-        options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right)
-        Settings.CreateSlider(category, castbarYSetting, options, "Vertical offset in pixels.")
-    end
-
-    local castbarPreviewSetting = MakePreviewSetting(category, "castbar", { kind = "castbar" })
-    Settings.CreateCheckbox(
-        category,
-        castbarPreviewSetting,
-        "Highlight the currently selected target frame. Only one preview can be active at a time."
-    )
-
-    layout:AddInitializer(Settings.CreateElementInitializer(
-        "SettingsListSectionHeaderTemplate",
-        { name = "Profile" }
-    ))
-
-    do
-        local function OnResetEQOL()
-            local ok, err = ns.ResetEQOL()
-            if not ok then
-                PrintError("Reset EQOL anchors failed: " .. tostring(err))
-                return
-            end
-            ns.RefreshUI()
-        end
-        layout:AddInitializer(CreateSettingsButtonInitializer(
-            "",
-            "Reset EQOL anchors",
-            OnResetEQOL,
-            "Restore EQOL source anchor overrides to defaults.",
-            false
-        ))
-    end
-
-    do
-        local function OnResetCastBar()
-            local ok, err = ns.ResetCastBar()
-            if not ok then
-                PrintError("Reset cast bar anchor failed: " .. tostring(err))
-                return
-            end
-            ns.RefreshUI()
-        end
-        layout:AddInitializer(CreateSettingsButtonInitializer(
-            "",
-            "Reset cast bar anchor",
-            OnResetCastBar,
-            "Restore cast bar anchoring to defaults.",
-            false
-        ))
-    end
-
-    do
-        local function OnResetAll()
-            local ok, err = ns.ResetAll()
-            if not ok then
-                PrintError("Reset all failed: " .. tostring(err))
-                return
-            end
-            ns.RefreshUI()
-        end
-        layout:AddInitializer(CreateSettingsButtonInitializer(
-            "",
-            "Reset all",
-            OnResetAll,
-            "Restore EQOL and cast bar anchors to defaults.",
-            false
-        ))
-    end
-
-    do
-        local function OnExport()
-            StaticPopup_Show("EQOLAYIJEANCHOR_EXPORT")
-        end
-        layout:AddInitializer(CreateSettingsButtonInitializer(
-            "",
-            "Export",
-            OnExport,
-            "Open a popup with the current EQOL Ayije Anchor profile.",
-            false
-        ))
-    end
-
-    do
-        local function OnImport()
-            StaticPopup_Show("EQOLAYIJEANCHOR_IMPORT")
-        end
-        layout:AddInitializer(CreateSettingsButtonInitializer(
-            "",
-            "Import",
-            OnImport,
-            "Open a popup to paste an exported EQOL Ayije Anchor profile.",
-            false
-        ))
-    end
-
-    Settings.RegisterAddOnCategory(category)
-    ns.categoryID = category:GetID()
-
+function options.EnsureSettingsPanelHook()
     if SettingsPanel and not ns._settingsPanelHookInstalled then
         SettingsPanel:HookScript("OnHide", function(self)
             if self:IsShown() then
@@ -713,12 +449,36 @@ local function BuildPanel()
     end
 end
 
+function options.CreateSettingsButtonInitializer(label, text, click, desc, searchable)
+    if type(_G.CreateSettingsButtonInitializer) == "function" then
+        return _G.CreateSettingsButtonInitializer(label, text, click, desc, searchable)
+    end
+
+    return Settings.CreateElementInitializer("SettingsButtonControlTemplate", {
+        label = label,
+        name = text,
+        text = text,
+        click = click,
+        desc = desc,
+        searchtags = searchable,
+    })
+end
+
+function options.BuildOptionsPanels()
+    if type(options.BuildAnchorsCategory) == "function" and not ns.categoryID then
+        options.BuildAnchorsCategory()
+    end
+    if type(options.BuildProfilesCategory) == "function" and not ns.profileCategoryID then
+        options.BuildProfilesCategory()
+    end
+end
+
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         self:UnregisterEvent("ADDON_LOADED")
         ns.GetDB()
-        BuildPanel()
+        options.BuildOptionsPanels()
     end
 end)

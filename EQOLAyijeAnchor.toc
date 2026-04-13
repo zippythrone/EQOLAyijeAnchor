@@ -15,3 +15,5 @@ Serialization.lua
 EQOLRuntime.lua
 EQOLHooks.lua
 Options.lua
+OptionsAnchors.lua
+OptionsProfiles.lua

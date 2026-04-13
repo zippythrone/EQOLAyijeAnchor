@@ -10,6 +10,7 @@ local knownTests = {
     { name = "castbar", path = testsDir .. "/test_castbar.lua" },
     { name = "profiles", path = testsDir .. "/test_profiles.lua" },
     { name = "serialization", path = testsDir .. "/test_serialization.lua" },
+    { name = "options", path = testsDir .. "/test_options.lua" },
 }
 
 local function resolveTest(arg)
