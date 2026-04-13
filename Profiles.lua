@@ -36,12 +36,8 @@ local function NormalizeProfile(profile)
     end
     profile.eqol.sources = cleanedSources
 
-    local cleanedCastbar = ns.castbar.BuildDefaultConfig()
-    local validatedCastbar = ns.castbar.ValidateConfig(profile.castbar)
-    if validatedCastbar then
-        cleanedCastbar = validatedCastbar
-    end
-    profile.castbar = cleanedCastbar
+    profile.castbar = type(profile.castbar) == "table" and profile.castbar or {}
+    ns.castbar.NormalizeDB(profile.castbar)
 
     return profile
 end
