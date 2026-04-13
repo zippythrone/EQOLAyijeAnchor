@@ -8,6 +8,7 @@
 ## Dependencies: EnhanceQoL, Ayije_CDM
 
 Core.lua
+EQOLConfig.lua
 EQOL.lua
 CastBar.lua
 Options.lua
