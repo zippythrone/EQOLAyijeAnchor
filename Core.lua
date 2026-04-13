@@ -63,38 +63,6 @@ end
 ns.DeepCopy = DeepCopy
 ns.WipeTable = WipeTable
 
-local function ReplaceTableContents(dst, src)
-    WipeTable(dst)
-    for k, v in pairs(src) do
-        dst[k] = DeepCopy(v)
-    end
-end
-
-local function DeepEqual(lhs, rhs)
-    if lhs == rhs then
-        return true
-    end
-    if type(lhs) ~= type(rhs) then
-        return false
-    end
-    if type(lhs) ~= "table" then
-        return false
-    end
-
-    for k, v in pairs(lhs) do
-        if not DeepEqual(v, rhs[k]) then
-            return false
-        end
-    end
-    for k in pairs(rhs) do
-        if lhs[k] == nil then
-            return false
-        end
-    end
-
-    return true
-end
-
 function ns.GetDB()
     if ns.profiles and type(ns.profiles.GetDB) == "function" then
         return ns.profiles.GetDB()
@@ -102,26 +70,6 @@ function ns.GetDB()
 
     EQOLAyijeAnchorDB = type(EQOLAyijeAnchorDB) == "table" and EQOLAyijeAnchorDB or {}
     return EQOLAyijeAnchorDB
-end
-
-local function HasEncodingUtil()
-    return C_EncodingUtil
-        and C_EncodingUtil.SerializeCBOR
-        and C_EncodingUtil.DeserializeCBOR
-        and C_EncodingUtil.CompressString
-        and C_EncodingUtil.DecompressString
-        and C_EncodingUtil.EncodeBase64
-        and C_EncodingUtil.DecodeBase64
-end
-
-local function EnsureValidationContracts()
-    if type(ns.eqol.ValidateSources) ~= "function" then
-        return nil, "EQOL subsystem not ready: missing ValidateSources"
-    end
-    if type(ns.castbar.ValidateConfig) ~= "function" then
-        return nil, "CastBar subsystem not ready: missing ValidateConfig"
-    end
-    return true
 end
 
 local function EnsureResetContracts(resetEqol, resetCastbar)
@@ -134,122 +82,56 @@ local function EnsureResetContracts(resetEqol, resetCastbar)
     return true
 end
 
-local function ValidatePayload(payload)
-    local ready, readyErr = EnsureValidationContracts()
-    if not ready then
-        return nil, readyErr
+local function GetSerializationApi()
+    local serialization = ns.serialization
+    if type(serialization) ~= "table" then
+        return nil, "Serialization subsystem not loaded"
     end
+    return serialization
+end
 
-    if type(payload) ~= "table" then
-        return nil, "Payload is not a table"
+function ns.SerializeProfile(profileName)
+    local serialization, err = GetSerializationApi()
+    if not serialization then
+        return nil, err
     end
+    return serialization.ExportProfile(profileName)
+end
 
-    local eqolSources = payload.eqol and payload.eqol.sources
-    local castbarPayload = payload.castbar
-
-    local cleanedEqol, eqolErr = ns.eqol.ValidateSources(eqolSources)
-    if not cleanedEqol then
-        return nil, eqolErr or "Invalid EQOL payload"
+function ns.ImportIntoProfile(profileName, rawString)
+    local serialization, err = GetSerializationApi()
+    if not serialization then
+        return nil, err
     end
-
-    local cleanedCastbar, castbarErr = ns.castbar.ValidateConfig(castbarPayload)
-    if not cleanedCastbar then
-        return nil, castbarErr or "Invalid castbar payload"
-    end
-
-    return {
-        eqol = {
-            sources = cleanedEqol,
-        },
-        castbar = cleanedCastbar,
-    }
+    return serialization.ImportIntoProfile(rawString, profileName)
 end
 
 function ns.SerializeSettings()
-    if not HasEncodingUtil() then
-        return nil, "C_EncodingUtil not available in this client"
+    if not (ns.profiles and type(ns.profiles.GetActiveProfileName) == "function") then
+        return nil, "Profiles subsystem not ready"
     end
-
-    local activeProfile = ns.profiles and type(ns.profiles.GetActiveProfile) == "function" and ns.profiles.GetActiveProfile() or nil
-    local payload, err = ValidatePayload(activeProfile)
-    if not payload then
-        return nil, err
-    end
-
-    local okS, cbor = pcall(C_EncodingUtil.SerializeCBOR, payload)
-    if not okS or not cbor then return nil, "CBOR serialize failed" end
-
-    local okC, compressed = pcall(C_EncodingUtil.CompressString, cbor)
-    if not okC or not compressed then return nil, "Compress failed" end
-
-    local okB, base64 = pcall(C_EncodingUtil.EncodeBase64, compressed)
-    if not okB or not base64 then return nil, "Base64 encode failed" end
-
-    return EXPORT_PREFIX .. base64
+    return ns.SerializeProfile(ns.profiles.GetActiveProfileName())
 end
 
 function ns.DeserializeSettings(str)
-    if type(str) ~= "string" then
-        return nil, "Empty input"
+    local serialization, err = GetSerializationApi()
+    if not serialization then
+        return nil, err
     end
-
-    str = str:gsub("^%s+", ""):gsub("%s+$", "")
-    if str == "" then
-        return nil, "Empty input"
-    end
-
-    if str:sub(1, #EXPORT_PREFIX) ~= EXPORT_PREFIX then
-        return nil, 'Unknown format - expected "EQAYA1:BASE64"'
-    end
-
-    if not HasEncodingUtil() then
-        return nil, "C_EncodingUtil not available in this client"
-    end
-
-    local payload64 = str:sub(#EXPORT_PREFIX + 1)
-    if payload64 == "" then
-        return nil, "Empty payload"
-    end
-
-    local okD, compressed = pcall(C_EncodingUtil.DecodeBase64, payload64)
-    if not okD or not compressed then return nil, "Base64 decode failed" end
-
-    local okU, cbor = pcall(C_EncodingUtil.DecompressString, compressed)
-    if not okU or not cbor then return nil, "Decompress failed" end
-
-    local okC, payload = pcall(C_EncodingUtil.DeserializeCBOR, cbor)
-    if not okC or type(payload) ~= "table" then
-        return nil, "CBOR deserialize failed"
-    end
-
-    return ValidatePayload(payload)
+    return serialization.DeserializeProfileString(str)
 end
 
 function ns.ApplyParsedSettings(parsed)
-    local cleaned, err = ValidatePayload(parsed)
-    if not cleaned then
-        return nil, err
+    if not (ns.profiles and type(ns.profiles.ReplaceProfile) == "function" and type(ns.profiles.GetActiveProfileName) == "function") then
+        return nil, "Profiles subsystem not ready"
     end
 
-    local profile = ns.profiles and type(ns.profiles.GetActiveProfile) == "function" and ns.profiles.GetActiveProfile() or nil
-    if type(profile) ~= "table" then
-        return nil, "Active profile is not available"
+    local payload = parsed
+    if type(parsed) == "table" and type(parsed.data) == "table" then
+        payload = parsed.data
     end
 
-    profile.eqol = type(profile.eqol) == "table" and profile.eqol or {}
-    profile.castbar = type(profile.castbar) == "table" and profile.castbar or {}
-    profile.eqol.sources = type(profile.eqol.sources) == "table" and profile.eqol.sources or {}
-
-    local eqolSourcesChanged = not DeepEqual(profile.eqol.sources, cleaned.eqol.sources)
-
-    ReplaceTableContents(profile.eqol.sources, cleaned.eqol.sources)
-    ReplaceTableContents(profile.castbar, cleaned.castbar)
-
-    if eqolSourcesChanged and ns.eqol.ClearRuntimeState then
-        ns.eqol.ClearRuntimeState()
-    end
-
-    return true
+    return ns.profiles.ReplaceProfile(ns.profiles.GetActiveProfileName(), payload)
 end
 
 function ns.ResetEQOL()

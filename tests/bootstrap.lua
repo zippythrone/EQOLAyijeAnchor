@@ -6,6 +6,40 @@ local function currentDir()
     return source:match("^(.*)/[^/]+$") or "."
 end
 
+local function serializeValue(value)
+    local valueType = type(value)
+    if valueType == "string" then
+        return string.format("%q", value)
+    end
+    if valueType == "number" or valueType == "boolean" then
+        return tostring(value)
+    end
+    if valueType == "table" then
+        local keys = {}
+        for key in pairs(value) do
+            keys[#keys + 1] = key
+        end
+        table.sort(keys, function(lhs, rhs)
+            return tostring(lhs) < tostring(rhs)
+        end)
+
+        local parts = { "{" }
+        for _, key in ipairs(keys) do
+            parts[#parts + 1] = "[" .. serializeValue(key) .. "]=" .. serializeValue(value[key]) .. ","
+        end
+        parts[#parts + 1] = "}"
+        return table.concat(parts)
+    end
+    error("Unsupported fake serialization type: " .. valueType)
+end
+
+local function deserializeValue(payload)
+    local loader = loadstring or load
+    local chunk, err = loader("return " .. payload)
+    assert(chunk, err)
+    return chunk()
+end
+
 local function makeFrame(name)
     local frame = {
         _name = name,
@@ -59,6 +93,8 @@ function M.newContext()
         options = {},
     }
 
+    _G.EQOLAyijeAnchorDB = nil
+
     _G.UIParent = _G.UIParent or makeFrame("UIParent")
     _G.UIParent.GetCenter = _G.UIParent.GetCenter or function()
         return 0, 0
@@ -91,6 +127,23 @@ function M.newContext()
             callback()
         end
     end
+
+    _G.C_EncodingUtil = {
+        SerializeCBOR = serializeValue,
+        DeserializeCBOR = deserializeValue,
+        CompressString = function(s)
+            return s
+        end,
+        DecompressString = function(s)
+            return s
+        end,
+        EncodeBase64 = function(s)
+            return s
+        end,
+        DecodeBase64 = function(s)
+            return s
+        end,
+    }
 
     _G.hooksecurefunc = _G.hooksecurefunc or function() end
     _G.InCombatLockdown = _G.InCombatLockdown or function()

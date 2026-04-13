@@ -297,6 +297,67 @@ function profiles.DeleteProfile(name)
     return true
 end
 
+local function ValidateReplacementPayload(payload)
+    if type(payload) ~= "table" then
+        return nil, "Profile payload must be a table"
+    end
+
+    if type(ns.eqol.ValidateSources) ~= "function" then
+        return nil, "EQOL subsystem not ready: missing ValidateSources"
+    end
+    if type(ns.castbar.ValidateConfig) ~= "function" then
+        return nil, "CastBar subsystem not ready: missing ValidateConfig"
+    end
+
+    local cleanedSources, sourcesErr = ns.eqol.ValidateSources(payload.eqol and payload.eqol.sources)
+    if not cleanedSources then
+        return nil, sourcesErr or "Invalid EQOL payload"
+    end
+
+    local cleanedCastbar, castbarErr = ns.castbar.ValidateConfig(payload.castbar)
+    if not cleanedCastbar then
+        return nil, castbarErr or "Invalid castbar payload"
+    end
+
+    return NormalizeProfile({
+        eqol = {
+            sources = cleanedSources,
+        },
+        castbar = cleanedCastbar,
+    })
+end
+
+function profiles.ReplaceProfile(name, payload)
+    local profileName, err = ValidateProfileName(name)
+    if not profileName then
+        return nil, err
+    end
+
+    local db = profiles.GetDB()
+    if type(db.profiles[profileName]) ~= "table" then
+        return nil, "Unknown profile: " .. profileName
+    end
+
+    local replacement, payloadErr = ValidateReplacementPayload(payload)
+    if not replacement then
+        return nil, payloadErr
+    end
+
+    db.profiles[profileName] = replacement
+
+    if db.activeProfile == profileName and type(ns.eqol.ClearRuntimeState) == "function" then
+        ns.eqol.ClearRuntimeState()
+    end
+    if db.activeProfile == profileName and type(ns.NotifyChanged) == "function" then
+        ns.NotifyChanged()
+    end
+    if type(ns.RefreshUI) == "function" then
+        ns.RefreshUI()
+    end
+
+    return true
+end
+
 function profiles.GetDB()
     local db = type(_G.EQOLAyijeAnchorDB) == "table" and _G.EQOLAyijeAnchorDB or {}
 
