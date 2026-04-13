@@ -50,6 +50,28 @@ local function ValidateProfileName(name)
     return name
 end
 
+local function IsValidProfile(profile)
+    return type(profile) == "table"
+end
+
+local function GetValidProfileNames(db)
+    local names = {}
+    for name, profile in pairs(db.profiles) do
+        if IsValidProfile(profile) then
+            names[#names + 1] = name
+        end
+    end
+    table.sort(names, function(lhs, rhs)
+        local lhsLower = lhs:lower()
+        local rhsLower = rhs:lower()
+        if lhsLower == rhsLower then
+            return lhs < rhs
+        end
+        return lhsLower < rhsLower
+    end)
+    return names
+end
+
 function profiles.BuildDefaultProfile()
     return BuildDefaultProfile()
 end
@@ -74,19 +96,7 @@ end
 
 function profiles.ListProfileNames()
     local db = profiles.GetDB()
-    local names = {}
-    for name in pairs(db.profiles) do
-        names[#names + 1] = name
-    end
-    table.sort(names, function(lhs, rhs)
-        local lhsLower = lhs:lower()
-        local rhsLower = rhs:lower()
-        if lhsLower == rhsLower then
-            return lhs < rhs
-        end
-        return lhsLower < rhsLower
-    end)
-    return names
+    return GetValidProfileNames(db)
 end
 
 function profiles.SwitchProfile(name)
@@ -200,15 +210,16 @@ function profiles.DeleteProfile(name)
     end
 
     local db = profiles.GetDB()
-    if type(db.profiles[profileName]) ~= "table" then
+    if not IsValidProfile(db.profiles[profileName]) then
         return nil, "Unknown profile: " .. profileName
     end
 
-    local names = profiles.ListProfileNames()
+    local names = GetValidProfileNames(db)
     if #names <= 1 then
         return nil, "Cannot delete the last remaining profile"
     end
 
+    local activeProfileChanged = db.activeProfile == profileName
     if db.activeProfile == profileName then
         for _, candidate in ipairs(names) do
             if candidate ~= profileName then
@@ -220,10 +231,10 @@ function profiles.DeleteProfile(name)
 
     db.profiles[profileName] = nil
 
-    if type(ns.eqol.ClearRuntimeState) == "function" then
+    if activeProfileChanged and type(ns.eqol.ClearRuntimeState) == "function" then
         ns.eqol.ClearRuntimeState()
     end
-    if type(ns.NotifyChanged) == "function" then
+    if activeProfileChanged and type(ns.NotifyChanged) == "function" then
         ns.NotifyChanged()
     end
     if type(ns.RefreshUI) == "function" then

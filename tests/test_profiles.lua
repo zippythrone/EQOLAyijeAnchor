@@ -85,3 +85,61 @@ assert(ctx.ns.profiles.GetActiveProfileName() == "Default", "expected active pro
 local ok, err = profiles.DeleteProfile("Default")
 assert(ok == nil, "expected deleting the last remaining profile to fail")
 assert(type(err) == "string" and err:lower():find("last", 1, true), "expected last-profile error message")
+
+local function contains(values, needle)
+    for _, value in ipairs(values) do
+        if value == needle then
+            return true
+        end
+    end
+    return false
+end
+
+local sideEffects = {
+    clear = 0,
+    notify = 0,
+    refresh = 0,
+}
+
+ctx.ns.eqol.ClearRuntimeState = function()
+    sideEffects.clear = sideEffects.clear + 1
+end
+ctx.ns.NotifyChanged = function()
+    sideEffects.notify = sideEffects.notify + 1
+end
+ctx.ns.RefreshUI = function()
+    sideEffects.refresh = sideEffects.refresh + 1
+end
+
+assert(profiles.CreateProfile("Active") == true, "expected Active profile to be created")
+assert(profiles.CreateProfile("Spare") == true, "expected Spare profile to be created")
+
+db.profiles.Broken = true
+
+local names = profiles.ListProfileNames()
+assert(not contains(names, "Broken"), "expected malformed profile entry to be ignored by ListProfileNames")
+
+assert(profiles.SwitchProfile("Active") == true, "expected SwitchProfile to activate Active")
+sideEffects.clear = 0
+sideEffects.notify = 0
+sideEffects.refresh = 0
+
+assert(profiles.DeleteProfile("Spare") == true, "expected inactive profile delete to succeed")
+assert(sideEffects.clear == 0, "expected inactive profile delete to skip ClearRuntimeState")
+assert(sideEffects.notify == 0, "expected inactive profile delete to skip NotifyChanged")
+assert(sideEffects.refresh == 1, "expected inactive profile delete to refresh UI")
+assert(ctx.ns.profiles.GetActiveProfileName() == "Active", "expected inactive profile delete to keep the active profile")
+
+sideEffects.clear = 0
+sideEffects.notify = 0
+sideEffects.refresh = 0
+
+assert(profiles.DeleteProfile("Active") == true, "expected active profile delete to succeed")
+assert(sideEffects.clear == 1, "expected active profile delete to clear runtime state")
+assert(sideEffects.notify == 1, "expected active profile delete to notify changes")
+assert(sideEffects.refresh == 1, "expected active profile delete to refresh UI")
+assert(ctx.ns.profiles.GetActiveProfileName() == "Default", "expected active profile delete to fall back to Default")
+
+local finalOk, finalErr = profiles.DeleteProfile("Default")
+assert(finalOk == nil, "expected malformed entry not to bypass last-profile protection")
+assert(type(finalErr) == "string" and finalErr:lower():find("last", 1, true), "expected last-profile protection to remain in force")
