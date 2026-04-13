@@ -143,3 +143,49 @@ assert(ctx.ns.profiles.GetActiveProfileName() == "Default", "expected active pro
 local finalOk, finalErr = profiles.DeleteProfile("Default")
 assert(finalOk == nil, "expected malformed entry not to bypass last-profile protection")
 assert(type(finalErr) == "string" and finalErr:lower():find("last", 1, true), "expected last-profile protection to remain in force")
+
+local function loadProfilesWithDB(dbState)
+    local freshCtx = bootstrap.newContext()
+    _G.EQOLAyijeAnchorDB = dbState
+    freshCtx.load("Core.lua")
+    freshCtx.load("EQOLConfig.lua")
+    freshCtx.load("CastBar.lua")
+    freshCtx.load("Profiles.lua")
+    return freshCtx
+end
+
+local recoveryCtx = loadProfilesWithDB({
+    profiles = {
+        Alpha = {
+            eqol = { sources = {} },
+            castbar = {},
+        },
+        Beta = {
+            eqol = { sources = {} },
+            castbar = {},
+        },
+    },
+    activeProfile = "Broken",
+})
+
+local recoveredDB = recoveryCtx.ns.GetDB()
+assert(recoveredDB.activeProfile == "Alpha", "expected invalid activeProfile to fall back to a valid existing profile")
+assert(recoveredDB.profiles.Broken == nil, "expected invalid activeProfile to not synthesize a junk profile")
+
+local numericKeyCtx = loadProfilesWithDB({
+    profiles = {
+        Alpha = {
+            eqol = { sources = {} },
+            castbar = {},
+        },
+        [1] = {
+            eqol = { sources = {} },
+            castbar = {},
+        },
+    },
+    activeProfile = 1,
+})
+
+local numericNames = numericKeyCtx.ns.profiles.ListProfileNames()
+assert(#numericNames == 1 and numericNames[1] == "Alpha", "expected numeric profile key to be ignored by profile listing")
+assert(numericKeyCtx.ns.profiles.GetActiveProfileName() == "Alpha", "expected numeric profile key to be ignored by active profile fallback")

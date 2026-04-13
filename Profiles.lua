@@ -50,6 +50,10 @@ local function ValidateProfileName(name)
     return name
 end
 
+local function IsValidProfileNameKey(name)
+    return type(name) == "string" and name:gsub("^%s+", ""):gsub("%s+$", "") ~= ""
+end
+
 local function IsValidProfile(profile)
     return type(profile) == "table"
 end
@@ -57,7 +61,7 @@ end
 local function GetValidProfileNames(db)
     local names = {}
     for name, profile in pairs(db.profiles) do
-        if IsValidProfile(profile) then
+        if IsValidProfileNameKey(name) and IsValidProfile(profile) then
             names[#names + 1] = name
         end
     end
@@ -260,12 +264,16 @@ function profiles.GetDB()
         db.activeProfile = "Default"
     else
         db.profiles = db.profiles or {}
-        if type(db.activeProfile) ~= "string" or db.activeProfile == "" then
-            db.activeProfile = "Default"
+        local activeProfileName = type(db.activeProfile) == "string" and db.activeProfile or nil
+        if not IsValidProfileNameKey(activeProfileName) or not IsValidProfile(db.profiles[activeProfileName]) then
+            local fallbackNames = GetValidProfileNames(db)
+            activeProfileName = fallbackNames[1]
+            if not activeProfileName then
+                activeProfileName = "Default"
+                db.profiles.Default = BuildDefaultProfile()
+            end
         end
-        if type(db.profiles[db.activeProfile]) ~= "table" then
-            db.profiles[db.activeProfile] = BuildDefaultProfile()
-        end
+        db.activeProfile = activeProfileName
         db.profiles[db.activeProfile] = NormalizeProfile(db.profiles[db.activeProfile])
     end
 
