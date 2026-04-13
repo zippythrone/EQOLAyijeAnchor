@@ -70,15 +70,14 @@ function castbar.BuildDefaultConfig()
 end
 
 function castbar.GetDB()
-    local db = ns.GetDB().castbar
-    if next(db) == nil then
-        db.target = castbar.DEFAULTS.target
-        db.point = castbar.DEFAULTS.point
-        db.relativePoint = castbar.DEFAULTS.relativePoint
-        db.x = castbar.DEFAULTS.x
-        db.y = castbar.DEFAULTS.y
+    local profiles = ns.profiles
+    local profile = profiles and type(profiles.GetActiveProfile) == "function" and profiles.GetActiveProfile() or nil
+    if type(profile) ~= "table" then
+        return castbar.BuildDefaultConfig()
     end
-    return db
+
+    profile.castbar = type(profile.castbar) == "table" and profile.castbar or castbar.BuildDefaultConfig()
+    return profile.castbar
 end
 
 function castbar.ValidateConfig(t)

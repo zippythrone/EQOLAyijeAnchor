@@ -7,6 +7,7 @@ end
 local testsDir = currentDir()
 local knownTests = {
     { name = "eqol_config", path = testsDir .. "/test_eqol_config.lua" },
+    { name = "profiles", path = testsDir .. "/test_profiles.lua" },
 }
 
 local function resolveTest(arg)

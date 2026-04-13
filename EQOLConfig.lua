@@ -331,9 +331,15 @@ function eqol.BuildDefaultSources()
 end
 
 function eqol.GetDB()
-    local db = ns.GetDB().eqol
-    db.sources = type(db.sources) == "table" and db.sources or eqol.BuildDefaultSources()
-    return db
+    local profiles = ns.profiles
+    local profile = profiles and type(profiles.GetActiveProfile) == "function" and profiles.GetActiveProfile() or nil
+    if type(profile) ~= "table" then
+        return { sources = eqol.BuildDefaultSources() }
+    end
+
+    profile.eqol = type(profile.eqol) == "table" and profile.eqol or {}
+    profile.eqol.sources = type(profile.eqol.sources) == "table" and profile.eqol.sources or eqol.BuildDefaultSources()
+    return profile.eqol
 end
 
 function eqol.NormalizeDB(db)

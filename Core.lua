@@ -5,6 +5,7 @@ local EXPORT_PREFIX = "EQAYA1:"
 
 ns.eqol = ns.eqol or {}
 ns.castbar = ns.castbar or {}
+ns.profiles = ns.profiles or {}
 
 ns.SHORT_TAG = SHORT_TAG
 ns.EXPORT_PREFIX = EXPORT_PREFIX
@@ -94,41 +95,13 @@ local function DeepEqual(lhs, rhs)
     return true
 end
 
-local function BuildDefaultDB()
-    local eqolSources = {}
-    local castbarConfig = {}
-
-    if ns.eqol.BuildDefaultSources then
-        eqolSources = ns.eqol.BuildDefaultSources()
-    end
-    if ns.castbar.BuildDefaultConfig then
-        castbarConfig = ns.castbar.BuildDefaultConfig()
-    end
-
-    return {
-        eqol = {
-            sources = eqolSources,
-        },
-        castbar = castbarConfig,
-    }
-end
-
 function ns.GetDB()
-    EQOLAyijeAnchorDB = type(EQOLAyijeAnchorDB) == "table" and EQOLAyijeAnchorDB or BuildDefaultDB()
-    local db = EQOLAyijeAnchorDB
-
-    db.eqol = type(db.eqol) == "table" and db.eqol or {}
-    db.eqol.sources = type(db.eqol.sources) == "table" and db.eqol.sources or {}
-    db.castbar = type(db.castbar) == "table" and db.castbar or {}
-
-    if ns.eqol.NormalizeDB then
-        ns.eqol.NormalizeDB(db.eqol)
-    end
-    if ns.castbar.NormalizeDB then
-        ns.castbar.NormalizeDB(db.castbar)
+    if ns.profiles and type(ns.profiles.GetDB) == "function" then
+        return ns.profiles.GetDB()
     end
 
-    return db
+    EQOLAyijeAnchorDB = type(EQOLAyijeAnchorDB) == "table" and EQOLAyijeAnchorDB or {}
+    return EQOLAyijeAnchorDB
 end
 
 local function HasEncodingUtil()
@@ -171,8 +144,7 @@ local function ValidatePayload(payload)
         return nil, "Payload is not a table"
     end
 
-    local eqolPayload = payload.eqol
-    local eqolSources = eqolPayload and eqolPayload.sources
+    local eqolSources = payload.eqol and payload.eqol.sources
     local castbarPayload = payload.castbar
 
     local cleanedEqol, eqolErr = ns.eqol.ValidateSources(eqolSources)
@@ -198,7 +170,8 @@ function ns.SerializeSettings()
         return nil, "C_EncodingUtil not available in this client"
     end
 
-    local payload, err = ValidatePayload(ns.GetDB())
+    local activeProfile = ns.profiles and type(ns.profiles.GetActiveProfile) == "function" and ns.profiles.GetActiveProfile() or nil
+    local payload, err = ValidatePayload(activeProfile)
     if not payload then
         return nil, err
     end
@@ -258,15 +231,19 @@ function ns.ApplyParsedSettings(parsed)
         return nil, err
     end
 
-    local db = ns.GetDB()
-    db.eqol = type(db.eqol) == "table" and db.eqol or {}
-    db.eqol.sources = type(db.eqol.sources) == "table" and db.eqol.sources or {}
-    db.castbar = type(db.castbar) == "table" and db.castbar or {}
+    local profile = ns.profiles and type(ns.profiles.GetActiveProfile) == "function" and ns.profiles.GetActiveProfile() or nil
+    if type(profile) ~= "table" then
+        return nil, "Active profile is not available"
+    end
 
-    local eqolSourcesChanged = not DeepEqual(db.eqol.sources, cleaned.eqol.sources)
+    profile.eqol = type(profile.eqol) == "table" and profile.eqol or {}
+    profile.castbar = type(profile.castbar) == "table" and profile.castbar or {}
+    profile.eqol.sources = type(profile.eqol.sources) == "table" and profile.eqol.sources or {}
 
-    ReplaceTableContents(db.eqol.sources, cleaned.eqol.sources)
-    ReplaceTableContents(db.castbar, cleaned.castbar)
+    local eqolSourcesChanged = not DeepEqual(profile.eqol.sources, cleaned.eqol.sources)
+
+    ReplaceTableContents(profile.eqol.sources, cleaned.eqol.sources)
+    ReplaceTableContents(profile.castbar, cleaned.castbar)
 
     if eqolSourcesChanged and ns.eqol.ClearRuntimeState then
         ns.eqol.ClearRuntimeState()
@@ -281,10 +258,14 @@ function ns.ResetEQOL()
         return nil, contractsErr
     end
 
-    local db = ns.GetDB()
+    local profile = ns.profiles and type(ns.profiles.GetActiveProfile) == "function" and ns.profiles.GetActiveProfile() or nil
+    if type(profile) ~= "table" then
+        return nil, "Active profile is not available"
+    end
+
     return ns.ApplyParsedSettings({
         eqol = { sources = ns.eqol.BuildDefaultSources() },
-        castbar = db.castbar,
+        castbar = profile.castbar,
     })
 end
 
@@ -294,9 +275,13 @@ function ns.ResetCastBar()
         return nil, contractsErr
     end
 
-    local db = ns.GetDB()
+    local profile = ns.profiles and type(ns.profiles.GetActiveProfile) == "function" and ns.profiles.GetActiveProfile() or nil
+    if type(profile) ~= "table" then
+        return nil, "Active profile is not available"
+    end
+
     return ns.ApplyParsedSettings({
-        eqol = { sources = db.eqol and db.eqol.sources },
+        eqol = { sources = profile.eqol and profile.eqol.sources },
         castbar = ns.castbar.BuildDefaultConfig(),
     })
 end
