@@ -42,27 +42,76 @@ local function NormalizeProfile(profile)
     return profile
 end
 
-local function ValidateProfileName(name)
-    name = type(name) == "string" and name:gsub("^%s+", ""):gsub("%s+$", "") or ""
-    if name == "" then
-        return nil, "Profile name cannot be empty"
+local function CanonicalizeProfileName(name)
+    if type(name) ~= "string" then
+        return nil
     end
+
+    name = name:gsub("^%s+", ""):gsub("%s+$", "")
+    if name == "" then
+        return nil
+    end
+
     return name
 end
 
-local function IsValidProfileNameKey(name)
-    return type(name) == "string" and name:gsub("^%s+", ""):gsub("%s+$", "") ~= ""
+local function ValidateProfileName(name)
+    name = CanonicalizeProfileName(name)
+    if not name then
+        return nil, "Profile name cannot be empty"
+    end
+    return name
 end
 
 local function IsValidProfile(profile)
     return type(profile) == "table"
 end
 
+local function ShouldKeepProfileCandidate(candidate, existing)
+    if candidate.exact ~= existing.exact then
+        return candidate.exact
+    end
+    if candidate.rawName ~= existing.rawName then
+        return candidate.rawName < existing.rawName
+    end
+    return false
+end
+
+local function CanonicalizeProfiles(rawProfiles)
+    local canonicalCandidates = {}
+    local canonicalProfiles = {}
+
+    for rawName, profile in pairs(rawProfiles) do
+        local canonicalName = CanonicalizeProfileName(rawName)
+        if canonicalName and IsValidProfile(profile) then
+            local candidate = {
+                canonicalName = canonicalName,
+                exact = rawName == canonicalName,
+                profile = profile,
+                rawName = rawName,
+            }
+            local existing = canonicalCandidates[canonicalName]
+            if not existing or ShouldKeepProfileCandidate(candidate, existing) then
+                canonicalCandidates[canonicalName] = candidate
+            end
+        end
+    end
+
+    for name, candidate in pairs(canonicalCandidates) do
+        canonicalProfiles[name] = NormalizeProfile(candidate.profile)
+    end
+
+    return canonicalProfiles
+end
+
 local function GetValidProfileNames(db)
     local names = {}
+    local seen = {}
     for name, profile in pairs(db.profiles) do
-        if IsValidProfileNameKey(name) and IsValidProfile(profile) then
-            names[#names + 1] = name
+        local canonicalName = CanonicalizeProfileName(name)
+        if canonicalName and IsValidProfile(profile) and not seen[canonicalName] then
+            seen[canonicalName] = true
+            names[#names + 1] = canonicalName
         end
     end
     table.sort(names, function(lhs, rhs)
@@ -263,9 +312,9 @@ function profiles.GetDB()
         }
         db.activeProfile = "Default"
     else
-        db.profiles = db.profiles or {}
-        local activeProfileName = type(db.activeProfile) == "string" and db.activeProfile or nil
-        if not IsValidProfileNameKey(activeProfileName) or not IsValidProfile(db.profiles[activeProfileName]) then
+        db.profiles = CanonicalizeProfiles(db.profiles or {})
+        local activeProfileName = CanonicalizeProfileName(db.activeProfile)
+        if not activeProfileName or not IsValidProfile(db.profiles[activeProfileName]) then
             local fallbackNames = GetValidProfileNames(db)
             activeProfileName = fallbackNames[1]
             if not activeProfileName then

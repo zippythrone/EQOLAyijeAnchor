@@ -189,3 +189,30 @@ local numericKeyCtx = loadProfilesWithDB({
 local numericNames = numericKeyCtx.ns.profiles.ListProfileNames()
 assert(#numericNames == 1 and numericNames[1] == "Alpha", "expected numeric profile key to be ignored by profile listing")
 assert(numericKeyCtx.ns.profiles.GetActiveProfileName() == "Alpha", "expected numeric profile key to be ignored by active profile fallback")
+
+local paddedKeyCtx = loadProfilesWithDB({
+    profiles = {
+        [" Alpha "] = {
+            eqol = { sources = {} },
+            castbar = {},
+        },
+        Beta = {
+            eqol = { sources = {} },
+            castbar = {},
+        },
+        [1] = {
+            eqol = { sources = {} },
+            castbar = {},
+        },
+    },
+    activeProfile = " Alpha ",
+})
+
+local paddedDB = paddedKeyCtx.ns.GetDB()
+assert(paddedDB.activeProfile == "Alpha", "expected padded activeProfile to canonicalize to Alpha")
+assert(type(paddedDB.profiles.Alpha) == "table", "expected padded profile to be rebuilt under canonical name")
+assert(paddedDB.profiles[" Alpha "] == nil, "expected padded raw profile key to be removed")
+
+local paddedNames = paddedKeyCtx.ns.profiles.ListProfileNames()
+assert(#paddedNames == 2 and paddedNames[1] == "Alpha" and paddedNames[2] == "Beta", "expected canonical profile names to be listed in order")
+assert(paddedKeyCtx.ns.profiles.GetProfile("Alpha") ~= nil, "expected public APIs to address the canonical profile name")
