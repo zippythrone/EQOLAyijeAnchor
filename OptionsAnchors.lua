@@ -206,17 +206,22 @@ local function BuildResetSection(category, layout)
 end
 
 function options.BuildAnchorsCategory()
-    if ns.categoryID or not Settings or not Settings.RegisterVerticalLayoutCategory then
+    if ns.categoryID or not Settings or not Settings.RegisterVerticalLayoutSubcategory then
         return ns.category
     end
 
-    local category, layout = Settings.RegisterVerticalLayoutCategory("EQOL Ayije Anchor")
+    local root = options.BuildRootCategory()
+    if not root then
+        return ns.category
+    end
+
+    local category, layout = Settings.RegisterVerticalLayoutSubcategory(root, "Anchors")
     BuildActiveProfileSection(category, layout)
     BuildEQOLSection(category, layout)
     BuildCastBarSection(category, layout)
     BuildResetSection(category, layout)
 
-    options.RegisterCategory(category, "EQOL Ayije Anchor", "main")
+    options.RegisterSubcategory(category, "Anchors", "main")
     options.EnsureSettingsPanelHook()
     return category
 end

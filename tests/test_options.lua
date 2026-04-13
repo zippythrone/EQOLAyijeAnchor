@@ -30,6 +30,20 @@ local function findCategory(name)
     return nil
 end
 
+assert(#settingsState.rootCategories == 1, "expected exactly one root settings category")
+local root = assert(findCategory("EQOL Ayije Anchor"), "expected root category to exist")
+local anchors = assert(findCategory("Anchors"), "expected Anchors subcategory to exist")
+local profiles = assert(findCategory("Profiles"), "expected Profiles subcategory to exist")
+
+assert(root.parent == nil, "expected root category to have no parent")
+assert(root.kind == "canvas", "expected root category to use canvas registration")
+assert(root.name == "EQOL Ayije Anchor", "expected root category name to match")
+assert(#root.subcategories == 2, "expected root category to have two child subcategories")
+assert(anchors.parent == root, "expected Anchors to be a child of the root category")
+assert(profiles.parent == root, "expected Profiles to be a child of the root category")
+assert(#settingsState.addOnCategories == 1, "expected exactly one addon category registration")
+assert(settingsState.addOnCategories[1] == root, "expected the root category to be the registered addon category")
+
 local function findControl(category, kind, key)
     for _, control in ipairs(category.controls or {}) do
         local setting = control.setting
@@ -64,25 +78,22 @@ local function acceptPopup(dialogKey)
     return popup
 end
 
-local anchorsCategory = assert(findCategory("EQOL Ayije Anchor"), "expected anchors page to be registered")
-local profilesCategory = assert(findCategory("EQOL Ayije Anchor - Profiles"), "expected profiles page to be registered")
-
 ctx.ns.OpenSettings()
-assert(settingsState.openedCategoryID == ctx.ns.categoryID, "expected /eaya to open the main anchors page")
+assert(settingsState.openedCategoryID == ctx.ns.categoryID, "expected /eaya to open Anchors")
 assert(settingsState.openedCategoryID ~= ctx.ns.profileCategoryID, "expected /eaya not to open the profiles page")
 
 local activeProfileControl = assert(
-    findControl(anchorsCategory, "dropdown", "EQOLAyijeAnchor_activeProfileDisplay"),
+    findControl(anchors, "dropdown", "EQOLAyijeAnchor_activeProfileDisplay"),
     "expected active profile display control to exist"
 )
 assert(activeProfileControl.setting:GetValue() == "Default", "expected Default to be the initial active profile")
 
 local selectedProfileControl = assert(
-    findControl(profilesCategory, "dropdown", "EQOLAyijeAnchor_selectedProfile"),
+    findControl(profiles, "dropdown", "EQOLAyijeAnchor_selectedProfile"),
     "expected selected profile dropdown to exist"
 )
 local switchProfileButton = assert(
-    findButton(profilesCategory, "Switch active profile"),
+    findButton(profiles, "Switch active profile"),
     "expected switch active profile button to exist"
 )
 

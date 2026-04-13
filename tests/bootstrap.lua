@@ -116,6 +116,7 @@ function M.newContext()
     local settingsState = {
         nextCategoryID = 1,
         categories = {},
+        rootCategories = {},
         openedCategoryID = nil,
         addOnCategories = {},
     }
@@ -136,6 +137,20 @@ function M.newContext()
         return category
     end
 
+    local function makeLayout(category)
+        local layout = {
+            category = category,
+            initializers = category.initializers,
+        }
+
+        function layout:AddInitializer(initializer)
+            self.initializers[#self.initializers + 1] = initializer
+            return initializer
+        end
+
+        return layout
+    end
+
     local function pushControl(category, control)
         if category and category.controls then
             category.controls[#category.controls + 1] = control
@@ -149,22 +164,41 @@ function M.newContext()
         Number = "number",
         String = "string",
     }
-    _G.Settings.RegisterCanvasLayoutCategory = _G.Settings.RegisterCanvasLayoutCategory or function() end
+    _G.Settings.RegisterCanvasLayoutCategory = function(frame, name)
+        local category = makeCategory(name)
+        category.kind = "canvas"
+        category.frame = frame
+        category.parent = nil
+        category.subcategories = {}
+
+        settingsState.categories[#settingsState.categories + 1] = category
+        settingsState.rootCategories[#settingsState.rootCategories + 1] = category
+        return category
+    end
     _G.Settings.RegisterAddOnCategory = function(category)
         settingsState.addOnCategories[#settingsState.addOnCategories + 1] = category
     end
     _G.Settings.RegisterVerticalLayoutCategory = function(name)
         local category = makeCategory(name)
-        local layout = {
-            category = category,
-            initializers = category.initializers,
-        }
+        category.kind = "vertical"
+        category.parent = nil
+        category.subcategories = {}
 
-        function layout:AddInitializer(initializer)
-            self.initializers[#self.initializers + 1] = initializer
-            return initializer
+        settingsState.categories[#settingsState.categories + 1] = category
+        settingsState.rootCategories[#settingsState.rootCategories + 1] = category
+        return category, makeLayout(category)
+    end
+    _G.Settings.RegisterVerticalLayoutSubcategory = function(parent, name)
+        local category = makeCategory(name)
+        category.kind = "vertical_subcategory"
+        category.parent = parent
+        category.subcategories = {}
+
+        local layout = makeLayout(category)
+
+        if parent and parent.subcategories then
+            parent.subcategories[#parent.subcategories + 1] = category
         end
-
         settingsState.categories[#settingsState.categories + 1] = category
         return category, layout
     end

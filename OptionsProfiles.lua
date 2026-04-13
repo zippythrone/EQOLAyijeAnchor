@@ -430,15 +430,20 @@ local function BuildProfileActions(category, layout)
 end
 
 function options.BuildProfilesCategory()
-    if ns.profileCategoryID or not Settings or not Settings.RegisterVerticalLayoutCategory then
+    if ns.profileCategoryID or not Settings or not Settings.RegisterVerticalLayoutSubcategory then
         return ns.profileCategoryID
     end
 
     selectedProfileName = GetSelectedProfileName()
 
-    local category, layout = Settings.RegisterVerticalLayoutCategory("EQOL Ayije Anchor - Profiles")
+    local root = options.BuildRootCategory()
+    if not root then
+        return ns.profileCategoryID
+    end
+
+    local category, layout = Settings.RegisterVerticalLayoutSubcategory(root, "Profiles")
     BuildProfileActions(category, layout)
 
-    options.RegisterCategory(category, "EQOL Ayije Anchor - Profiles", "profiles")
+    options.RegisterSubcategory(category, "Profiles", "profiles")
     return category
 end

@@ -389,16 +389,35 @@ options.SelectionsEqual = SelectionsEqual
 options.CopySelection = CopySelection
 options.MakePreviewSetting = MakePreviewSetting
 
+ns.rootCategory = nil
+ns.rootCategoryID = nil
 ns.categoryID = nil
 ns.category = nil
 ns.profileCategoryID = nil
 
-function options.RegisterCategory(category, name, role)
-    if not category or not Settings or not Settings.RegisterAddOnCategory then
+function options.BuildRootCategory()
+    if ns.rootCategory or not Settings or not Settings.RegisterCanvasLayoutCategory then
+        return ns.rootCategory
+    end
+
+    local frame = CreateFrame("Frame", "EQOLAyijeAnchorSettingsRoot", UIParent)
+    local category = Settings.RegisterCanvasLayoutCategory(frame, "EQOL Ayije Anchor")
+    if Settings.RegisterAddOnCategory then
+        Settings.RegisterAddOnCategory(category)
+    end
+
+    ns.rootCategory = category
+    ns.rootCategoryID = category:GetID()
+    options.rootCategoryID = ns.rootCategoryID
+    options.rootCategoryName = "EQOL Ayije Anchor"
+    return category
+end
+
+function options.RegisterSubcategory(category, name, role)
+    if not category then
         return
     end
 
-    Settings.RegisterAddOnCategory(category)
     if role == "main" then
         ns.category = category
         ns.categoryID = category:GetID()
@@ -465,6 +484,9 @@ function options.CreateSettingsButtonInitializer(label, text, click, desc, searc
 end
 
 function options.BuildOptionsPanels()
+    if type(options.BuildRootCategory) == "function" then
+        options.BuildRootCategory()
+    end
     if type(options.BuildAnchorsCategory) == "function" and not ns.categoryID then
         options.BuildAnchorsCategory()
     end
