@@ -51,7 +51,7 @@ end
 
 function M.newContext()
     local testsDir = currentDir()
-    local addonRoot = testsDir:match("^(.*)/tests$") or testsDir
+    local addonRoot = testsDir:match("^(.*)/tests$") or "."
     local ns = {
         eqol = {},
         castbar = {},
