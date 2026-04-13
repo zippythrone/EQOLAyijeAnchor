@@ -12,4 +12,5 @@ EQOLConfig.lua
 EQOL.lua
 CastBar.lua
 Profiles.lua
+Serialization.lua
 Options.lua
