@@ -612,6 +612,26 @@ end
 
 eqol.EmitWarning = EmitWarning
 
+local function GetPointOffset(point, width, height)
+    local x = 0
+    local y = 0
+    point = NormalizePoint(point, "CENTER")
+
+    if point:find("LEFT", 1, true) then
+        x = x - (width / 2)
+    elseif point:find("RIGHT", 1, true) then
+        x = x + (width / 2)
+    end
+
+    if point:find("TOP", 1, true) then
+        y = y + (height / 2)
+    elseif point:find("BOTTOM", 1, true) then
+        y = y - (height / 2)
+    end
+
+    return x, y
+end
+
 local function CaptureAbsoluteAnchor(frame, point)
     if not frame or not frame.GetCenter or not UIParent or not UIParent.GetCenter then
         return nil
@@ -632,28 +652,51 @@ local function CaptureAbsoluteAnchor(frame, point)
 
     local width = ((frame.GetWidth and frame:GetWidth()) or 0) * scaleFactor
     local height = ((frame.GetHeight and frame:GetHeight()) or 0) * scaleFactor
-
     local x = centerX - uiCenterX
     local y = centerY - uiCenterY
-    point = NormalizePoint(point, "CENTER")
 
-    if point:find("LEFT", 1, true) then
-        x = x - width / 2
-    elseif point:find("RIGHT", 1, true) then
-        x = x + width / 2
-    end
-
-    if point:find("TOP", 1, true) then
-        y = y + height / 2
-    elseif point:find("BOTTOM", 1, true) then
-        y = y - height / 2
-    end
+    local pointOffsetX, pointOffsetY = GetPointOffset(point, width, height)
+    x = x + pointOffsetX
+    y = y + pointOffsetY
 
     return {
-        point = point,
+        point = NormalizePoint(point, "CENTER"),
         relativePoint = "CENTER",
         x = RoundNumber(x),
         y = RoundNumber(y),
+    }
+end
+
+local function BuildAbsoluteAnchorFromTargetFramePoint(targetFrame, sourcePoint, targetPoint, offsetX, offsetY)
+    if not targetFrame or not targetFrame.GetCenter or not UIParent or not UIParent.GetCenter then
+        return nil
+    end
+
+    local centerX, centerY = targetFrame:GetCenter()
+    local uiCenterX, uiCenterY = UIParent:GetCenter()
+    if not centerX or not centerY or not uiCenterX or not uiCenterY then
+        return nil
+    end
+
+    local uiScale = (UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+    local frameScale = (targetFrame.GetEffectiveScale and targetFrame:GetEffectiveScale()) or uiScale
+    local scaleFactor = frameScale / uiScale
+
+    centerX = centerX * scaleFactor
+    centerY = centerY * scaleFactor
+
+    local width = ((targetFrame.GetWidth and targetFrame:GetWidth()) or 0) * scaleFactor
+    local height = ((targetFrame.GetHeight and targetFrame:GetHeight()) or 0) * scaleFactor
+    if width <= 0 or height <= 0 then
+        return nil
+    end
+    local pointOffsetX, pointOffsetY = GetPointOffset(targetPoint, width, height)
+
+    return {
+        point = NormalizePoint(sourcePoint, "CENTER"),
+        relativePoint = "CENTER",
+        x = RoundNumber((centerX - uiCenterX) + pointOffsetX + (tonumber(offsetX) or 0)),
+        y = RoundNumber((centerY - uiCenterY) + pointOffsetY + (tonumber(offsetY) or 0)),
     }
 end
 
@@ -666,7 +709,34 @@ local function ApplyAbsoluteAnchor(frame, anchor)
     return true
 end
 
-local function MarkDirty(source)
+local MarkDirty
+
+local function ApplyMirroredPartyRacialsAnchor(source, sourceFrame, cfg, targetFrame)
+    local anchor = BuildAbsoluteAnchorFromTargetFramePoint(
+        targetFrame,
+        cfg.point,
+        cfg.relativePoint,
+        cfg.x,
+        cfg.y
+    )
+
+    if not anchor then
+        MarkDirty(source)
+        if lastAbsoluteAnchors[source] then
+            ApplyAbsoluteAnchor(sourceFrame, lastAbsoluteAnchors[source])
+        end
+        EmitWarning(source, cfg.target, "Target frame could not be measured", "Keeping the last successfully applied position.")
+        return false
+    end
+
+    ApplyAbsoluteAnchor(sourceFrame, anchor)
+    lastAbsoluteAnchors[source] = anchor
+    dirtySources[source] = nil
+    ClearWarnings(source)
+    return true
+end
+
+MarkDirty = function(source)
     if source then
         dirtySources[source] = true
         return
@@ -708,6 +778,10 @@ function eqol.ApplySourceAnchor(source)
         end
         EmitWarning(source, cfg.target, "Target frame could not be resolved", "Keeping the last successfully applied position.")
         return false
+    end
+
+    if source == "party" and cfg.target == "cdm_racials" then
+        return ApplyMirroredPartyRacialsAnchor(source, sourceFrame, cfg, targetFrame)
     end
 
     sourceFrame:ClearAllPoints()
@@ -884,16 +958,42 @@ local function InstallUFHooks()
     end
 end
 
-local function InstallAyijeHook()
-    local cdm = _G.Ayije_CDM
-    if eqol._ayijeHookInstalled or not cdm or type(cdm.UpdatePlayerCastBar) ~= "function" then
+local AYIJE_RACIALS_POSITION_CALLBACK_KEY = "EQAYA_RacialsMirror"
+
+local function RequestPartyRacialsMirrorRefresh()
+    local cfg = eqol.GetSourceConfig("party")
+    if not (cfg and cfg.enabled and cfg.target == "cdm_racials") then
         return
     end
 
-    hooksecurefunc(cdm, "UpdatePlayerCastBar", function()
-        eqol.ApplyAllAnchors()
-    end)
-    eqol._ayijeHookInstalled = true
+    MarkDirty("party")
+    eqol.RequestDeferredApply()
+end
+
+local function InstallAyijeHook()
+    local cdm = _G.Ayije_CDM
+    if not cdm then
+        return
+    end
+
+    if not eqol._ayijeCastBarHookInstalled and type(cdm.UpdatePlayerCastBar) == "function" then
+        hooksecurefunc(cdm, "UpdatePlayerCastBar", function()
+            eqol.ApplyAllAnchors()
+        end)
+        eqol._ayijeCastBarHookInstalled = true
+    end
+
+    if not eqol._ayijeRacialsHookInstalled and type(cdm.UpdateRacials) == "function" then
+        hooksecurefunc(cdm, "UpdateRacials", function()
+            RequestPartyRacialsMirrorRefresh()
+        end)
+        eqol._ayijeRacialsHookInstalled = true
+    end
+
+    if not eqol._ayijeTrackerPositionHookInstalled and type(cdm.RegisterTrackerPositionCallback) == "function" then
+        cdm.RegisterTrackerPositionCallback(AYIJE_RACIALS_POSITION_CALLBACK_KEY, RequestPartyRacialsMirrorRefresh)
+        eqol._ayijeTrackerPositionHookInstalled = true
+    end
 end
 
 local f = CreateFrame("Frame")
