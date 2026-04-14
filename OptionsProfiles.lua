@@ -3,7 +3,6 @@ local options = ns.options or {}
 ns.options = options
 
 local SETTING_VAR_PREFIX = "EQOLAyijeAnchor_"
-local selectedProfileName = nil
 
 local PROFILE_CREATE_DIALOG = "EQOLAYIJEANCHOR_PROFILE_CREATE"
 local PROFILE_RENAME_DIALOG = "EQOLAYIJEANCHOR_PROFILE_RENAME"
@@ -12,40 +11,25 @@ local PROFILE_DELETE_DIALOG = "EQOLAYIJEANCHOR_PROFILE_DELETE"
 local PROFILE_EXPORT_DIALOG = "EQOLAYIJEANCHOR_PROFILE_EXPORT"
 local PROFILE_IMPORT_DIALOG = "EQOLAYIJEANCHOR_PROFILE_IMPORT"
 
-local function GetSelectedProfileName()
-    local current = selectedProfileName
-    if current and ns.profiles.GetProfile(current) then
-        return current
-    end
-
-    selectedProfileName = ns.profiles.GetActiveProfileName()
-    return selectedProfileName
+local function GetActiveProfileName()
+    return ns.profiles.GetActiveProfileName()
 end
 
-local function SetSelectedProfileName(name, suppressRefresh)
+local function SwitchActiveProfile(name)
     local profileName, err = ns.profiles.ValidateProfileName(name)
     if not profileName then
         return nil, err
     end
-    if not ns.profiles.GetProfile(profileName) then
-        return nil, "Unknown profile: " .. profileName
+
+    local ok, switchErr = ns.profiles.SwitchProfile(profileName)
+    if not ok then
+        return nil, switchErr
     end
 
-    selectedProfileName = profileName
-    if not suppressRefresh and options.RefreshOptionsUI then
+    if options.RefreshOptionsUI then
         options.RefreshOptionsUI(false)
     end
     return true
-end
-
-local function SyncSelectedProfileName(fallbackName)
-    if fallbackName and ns.profiles.GetProfile(fallbackName) then
-        selectedProfileName = fallbackName
-        return selectedProfileName
-    end
-
-    selectedProfileName = ns.profiles.GetActiveProfileName()
-    return selectedProfileName
 end
 
 local function BuildProfileDropdownOptions()
@@ -67,106 +51,75 @@ end
 
 local profileUI = {}
 
-function profileUI.GetSelectedProfileName()
-    return GetSelectedProfileName()
-end
-
-function profileUI.SetSelectedProfileName(name)
-    return SetSelectedProfileName(name)
-end
-
 function profileUI.CreateProfile(name)
     local profileName, nameErr = ns.profiles.ValidateProfileName(name)
     if not profileName then
         return nil, nameErr
     end
 
-    local ok, err = ns.profiles.CreateProfile(profileName)
+    local ok, err = ns.profiles.CreateProfile(profileName, GetActiveProfileName())
     if not ok then
         return nil, err
     end
 
-    selectedProfileName = profileName
     if options.RefreshOptionsUI then
         options.RefreshOptionsUI(false)
     end
     return true
 end
 
-function profileUI.RenameSelectedProfile(newName)
+function profileUI.RenameActiveProfile(newName)
     local profileName, nameErr = ns.profiles.ValidateProfileName(newName)
     if not profileName then
         return nil, nameErr
     end
 
-    local sourceName = GetSelectedProfileName()
-    local ok, err = ns.profiles.RenameProfile(sourceName, profileName)
+    local ok, err = ns.profiles.RenameProfile(GetActiveProfileName(), profileName)
     if not ok then
         return nil, err
     end
 
-    selectedProfileName = profileName
     if options.RefreshOptionsUI then
         options.RefreshOptionsUI(false)
     end
     return true
 end
 
-function profileUI.DuplicateSelectedProfile(newName)
+function profileUI.DuplicateActiveProfile(newName)
     local profileName, nameErr = ns.profiles.ValidateProfileName(newName)
     if not profileName then
         return nil, nameErr
     end
 
-    local sourceName = GetSelectedProfileName()
-    local ok, err = ns.profiles.DuplicateProfile(sourceName, profileName)
+    local ok, err = ns.profiles.DuplicateProfile(GetActiveProfileName(), profileName)
     if not ok then
         return nil, err
     end
 
-    selectedProfileName = profileName
     if options.RefreshOptionsUI then
         options.RefreshOptionsUI(false)
     end
     return true
 end
 
-function profileUI.DeleteSelectedProfile()
-    local sourceName = GetSelectedProfileName()
-    local ok, err = ns.profiles.DeleteProfile(sourceName)
+function profileUI.DeleteActiveProfile()
+    local ok, err = ns.profiles.DeleteProfile(GetActiveProfileName())
     if not ok then
         return nil, err
     end
 
-    SyncSelectedProfileName()
     if options.RefreshOptionsUI then
         options.RefreshOptionsUI(false)
     end
     return true
 end
 
-function profileUI.SwitchToSelectedProfile()
-    local sourceName = GetSelectedProfileName()
-    local ok, err = ns.profiles.SwitchProfile(sourceName)
-    if not ok then
-        return nil, err
-    end
-
-    selectedProfileName = ns.profiles.GetActiveProfileName()
-    if options.RefreshOptionsUI then
-        options.RefreshOptionsUI(false)
-    end
-    return true
+function profileUI.ExportActiveProfile()
+    return ns.SerializeProfile(GetActiveProfileName())
 end
 
-function profileUI.ExportSelectedProfile()
-    local sourceName = GetSelectedProfileName()
-    return ns.SerializeProfile(sourceName)
-end
-
-function profileUI.ImportIntoSelectedProfile(rawString)
-    local targetName = GetSelectedProfileName()
-    local ok, err = ns.ImportIntoProfile(targetName, rawString)
+function profileUI.ImportIntoActiveProfile(rawString)
+    local ok, err = ns.ImportIntoProfile(GetActiveProfileName(), rawString)
     if not ok then
         return nil, err
     end
@@ -178,8 +131,6 @@ function profileUI.ImportIntoSelectedProfile(rawString)
 end
 
 options.profileUI = profileUI
-options.GetSelectedProfileName = GetSelectedProfileName
-options.SetSelectedProfileName = SetSelectedProfileName
 
 local function DefineTextPopup(key, title, buttonLabel, onAccept, onShow)
     StaticPopupDialogs[key] = {
@@ -252,7 +203,7 @@ end)
 DefineTextPopup(PROFILE_RENAME_DIALOG, "EQOL Ayije Anchor - Rename profile", OKAY, function(popup)
     local eb = GetPopupText(popup)
     local input = (eb and eb:GetText()) or ""
-    local ok, err = profileUI.RenameSelectedProfile(input)
+    local ok, err = profileUI.RenameActiveProfile(input)
     if not ok then
         PrintActionError("Rename profile failed", err)
         return false
@@ -260,7 +211,7 @@ DefineTextPopup(PROFILE_RENAME_DIALOG, "EQOL Ayije Anchor - Rename profile", OKA
     options.PrintSuccess("Renamed profile.")
     return true
 end, function(_, eb)
-    eb:SetText(GetSelectedProfileName())
+    eb:SetText(GetActiveProfileName())
     eb:HighlightText()
     eb:SetFocus()
 end)
@@ -268,7 +219,7 @@ end)
 DefineTextPopup(PROFILE_DUPLICATE_DIALOG, "EQOL Ayije Anchor - Duplicate profile", OKAY, function(popup)
     local eb = GetPopupText(popup)
     local input = (eb and eb:GetText()) or ""
-    local ok, err = profileUI.DuplicateSelectedProfile(input)
+    local ok, err = profileUI.DuplicateActiveProfile(input)
     if not ok then
         PrintActionError("Duplicate profile failed", err)
         return false
@@ -276,13 +227,13 @@ DefineTextPopup(PROFILE_DUPLICATE_DIALOG, "EQOL Ayije Anchor - Duplicate profile
     options.PrintSuccess("Duplicated profile to: " .. tostring(input))
     return true
 end, function(_, eb)
-    eb:SetText(GetSelectedProfileName() .. " Copy")
+    eb:SetText(GetActiveProfileName() .. " Copy")
     eb:HighlightText()
     eb:SetFocus()
 end)
 
-DefineConfirmPopup(PROFILE_DELETE_DIALOG, "Delete the selected profile?", DELETE, function()
-    local ok, err = profileUI.DeleteSelectedProfile()
+DefineConfirmPopup(PROFILE_DELETE_DIALOG, "Delete the active profile?", DELETE, function()
+    local ok, err = profileUI.DeleteActiveProfile()
     if not ok then
         PrintActionError("Delete profile failed", err)
         return false
@@ -291,10 +242,10 @@ DefineConfirmPopup(PROFILE_DELETE_DIALOG, "Delete the selected profile?", DELETE
     return true
 end)
 
-DefineTextPopup(PROFILE_EXPORT_DIALOG, "EQOL Ayije Anchor - Export selected profile\n(Ctrl+C to copy, Esc to close)", OKAY, function()
+DefineTextPopup(PROFILE_EXPORT_DIALOG, "EQOL Ayije Anchor - Export active profile\n(Ctrl+C to copy, Esc to close)", OKAY, function()
     return true
 end, function(popup, eb)
-    local exported, err = profileUI.ExportSelectedProfile()
+    local exported, err = profileUI.ExportActiveProfile()
     if not exported then
         eb:SetText("")
         PrintActionError("Export failed", err)
@@ -309,12 +260,12 @@ end)
 DefineTextPopup(PROFILE_IMPORT_DIALOG, "EQOL Ayije Anchor - Paste import string", "Import", function(popup)
     local eb = GetPopupText(popup)
     local input = (eb and eb:GetText()) or ""
-    local ok, err = profileUI.ImportIntoSelectedProfile(input)
+    local ok, err = profileUI.ImportIntoActiveProfile(input)
     if not ok then
         PrintActionError("Import failed", err)
         return false
     end
-    options.PrintSuccess("Imported into selected profile.")
+    options.PrintSuccess("Imported into active profile.")
     return true
 end, function(_, eb)
     eb:SetText("")
@@ -327,46 +278,36 @@ local function BuildProfileActions(category, layout)
         { name = "Profiles" }
     ))
 
-    local selectedSetting = Settings.RegisterProxySetting(
+    local activeSetting = Settings.RegisterProxySetting(
         category,
-        SETTING_VAR_PREFIX .. "selectedProfile",
+        SETTING_VAR_PREFIX .. "profileActiveProfile",
         Settings.VarType.String,
-        "Selected profile",
-        GetSelectedProfileName(),
+        "Active profile",
+        GetActiveProfileName(),
         function()
-            return GetSelectedProfileName()
+            return GetActiveProfileName()
         end,
         function(value, initializing)
-            local ok, err = SetSelectedProfileName(value, initializing)
+            if initializing then
+                return
+            end
+            local ok, err = SwitchActiveProfile(value)
             if not ok then
-                PrintActionError("Select profile failed", err)
+                PrintActionError("Switch profile failed", err)
             end
         end
     )
 
-    options.RegisterProxySetting("profile.selected", selectedSetting, function()
-        return GetSelectedProfileName()
+    options.RegisterProxySetting("profile.active", activeSetting, function()
+        return GetActiveProfileName()
     end)
 
     Settings.CreateDropdown(
         category,
-        selectedSetting,
+        activeSetting,
         BuildProfileDropdownOptions,
-        "Choose which saved profile the buttons below will operate on."
+        "Choose the profile the addon should use right now."
     )
-
-    layout:AddInitializer(options.CreateSettingsButtonInitializer(
-        "",
-        "Switch active profile",
-        function()
-            local ok, err = profileUI.SwitchToSelectedProfile()
-            if not ok then
-                PrintActionError("Switch profile failed", err)
-            end
-        end,
-        "Make the selected profile active immediately.",
-        false
-    ))
 
     layout:AddInitializer(options.CreateSettingsButtonInitializer(
         "",
@@ -380,51 +321,51 @@ local function BuildProfileActions(category, layout)
 
     layout:AddInitializer(options.CreateSettingsButtonInitializer(
         "",
-        "Rename profile",
+        "Rename active profile",
         function()
             StaticPopup_Show(PROFILE_RENAME_DIALOG)
         end,
-        "Rename the selected profile.",
+        "Rename the active profile.",
         false
     ))
 
     layout:AddInitializer(options.CreateSettingsButtonInitializer(
         "",
-        "Duplicate profile",
+        "Duplicate active profile",
         function()
             StaticPopup_Show(PROFILE_DUPLICATE_DIALOG)
         end,
-        "Duplicate the selected profile.",
+        "Duplicate the active profile.",
         false
     ))
 
     layout:AddInitializer(options.CreateSettingsButtonInitializer(
         "",
-        "Delete profile",
+        "Delete active profile",
         function()
             StaticPopup_Show(PROFILE_DELETE_DIALOG)
         end,
-        "Delete the selected profile.",
+        "Delete the active profile.",
         false
     ))
 
     layout:AddInitializer(options.CreateSettingsButtonInitializer(
         "",
-        "Export profile",
+        "Export active profile",
         function()
             StaticPopup_Show(PROFILE_EXPORT_DIALOG)
         end,
-        "Export the selected profile.",
+        "Export the active profile.",
         false
     ))
 
     layout:AddInitializer(options.CreateSettingsButtonInitializer(
         "",
-        "Import into profile",
+        "Import into active profile",
         function()
             StaticPopup_Show(PROFILE_IMPORT_DIALOG)
         end,
-        "Replace the selected profile from an import string.",
+        "Replace the active profile from an import string.",
         false
     ))
 end
@@ -433,8 +374,6 @@ function options.BuildProfilesCategory()
     if ns.profileCategoryID or not Settings or not Settings.RegisterVerticalLayoutSubcategory then
         return ns.profileCategoryID
     end
-
-    selectedProfileName = GetSelectedProfileName()
 
     local root = options.BuildRootCategory()
     if not root then

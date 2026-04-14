@@ -88,30 +88,24 @@ local activeProfileControl = assert(
 )
 assert(activeProfileControl.setting:GetValue() == "Default", "expected Default to be the initial active profile")
 
-local selectedProfileControl = assert(
-    findControl(profiles, "dropdown", "EQOLAyijeAnchor_selectedProfile"),
-    "expected selected profile dropdown to exist"
+local profileDropdown = assert(
+    findControl(profiles, "dropdown", "EQOLAyijeAnchor_profileActiveProfile"),
+    "expected active profile dropdown to exist"
 )
-local switchProfileButton = assert(
-    findButton(profiles, "Switch active profile"),
-    "expected switch active profile button to exist"
-)
+assert(findButton(profiles, "Switch active profile") == nil, "expected switch active profile button to be absent")
+assert(findButton(profiles, "Import into active profile") ~= nil, "expected import into active profile button to exist")
+assert(StaticPopupDialogs["EQOLAYIJEANCHOR_PROFILE_EXPORT"].text:match("Export active profile"), "expected export popup copy to mention the active profile")
 
 submitPopup("EQOLAYIJEANCHOR_PROFILE_CREATE", "Arena")
 submitPopup("EQOLAYIJEANCHOR_PROFILE_CREATE", "Imported")
 
-local selectedOptions = selectedProfileControl:GetOptions()
-assert(selectedOptions["Arena"], "expected Arena to appear in the selected-profile dropdown")
-assert(selectedOptions["Imported"], "expected Imported to appear in the selected-profile dropdown")
+local profileOptions = profileDropdown:GetOptions()
+assert(profileOptions["Arena"], "expected Arena to appear in the active-profile dropdown")
+assert(profileOptions["Imported"], "expected Imported to appear in the active-profile dropdown")
 
-selectedProfileControl.setting:SetValue("Arena")
-assert(ctx.ns.options.GetSelectedProfileName() == "Arena", "expected Arena to become the selected profile")
-switchProfileButton.click()
-assert(ctx.ns.profiles.GetActiveProfileName() == "Arena", "expected switch profile button to update the active profile")
+profileDropdown.setting:SetValue("Arena")
+assert(ctx.ns.profiles.GetActiveProfileName() == "Arena", "expected dropdown changes to switch the active profile immediately")
 assert(activeProfileControl.setting:GetValue() == "Arena", "expected active profile display to track the active profile")
-
-selectedProfileControl.setting:SetValue("Imported")
-assert(ctx.ns.options.GetSelectedProfileName() == "Imported", "expected Imported to become the selected profile")
 
 local importedProfile = assert(ctx.ns.profiles.GetProfile("Imported"))
 importedProfile.eqol.sources.player.enabled = false
@@ -125,37 +119,39 @@ arenaProfile.castbar.x = 42
 
 local exportPopup = assert(StaticPopup_Show("EQOLAYIJEANCHOR_PROFILE_EXPORT"), "expected export popup to be shown")
 local exported = exportPopup.EditBox:GetText()
-assert(exported:match("^EQAYA"), "expected selected-profile export to use the addon export prefix")
+assert(exported:match("^EQAYA"), "expected active-profile export to use the addon export prefix")
 
-importedProfile.eqol.sources.player.enabled = true
-importedProfile.castbar.target = "essential"
-importedProfile.castbar.x = 99
+arenaProfile.eqol.sources.player.enabled = false
+arenaProfile.castbar.target = "essential"
+arenaProfile.castbar.x = 99
 
 submitPopup("EQOLAYIJEANCHOR_PROFILE_IMPORT", exported)
-assert(ctx.ns.profiles.GetActiveProfileName() == "Arena", "expected import into the selected profile not to change the active profile")
+assert(ctx.ns.profiles.GetActiveProfileName() == "Arena", "expected import into active profile to keep Arena active")
+arenaProfile = assert(ctx.ns.profiles.GetProfile("Arena"))
+assert(arenaProfile.eqol.sources.player.enabled == true, "expected active profile EQOL data to be restored")
+assert(arenaProfile.castbar.target == "utility", "expected active profile castbar target to be restored")
+assert(arenaProfile.castbar.x == 42, "expected active profile castbar offset to be restored")
 importedProfile = assert(ctx.ns.profiles.GetProfile("Imported"))
-assert(importedProfile.eqol.sources.player.enabled == false, "expected selected profile EQOL data to be restored")
-assert(importedProfile.castbar.target == "screen", "expected selected profile castbar target to be restored")
-assert(importedProfile.castbar.x == -7, "expected selected profile castbar offset to be restored")
+assert(importedProfile.castbar.x == -7, "expected inactive profile data to remain untouched")
+assert(importedProfile.eqol.sources.player.enabled == false, "expected inactive profile EQOL data to remain untouched")
 
 submitPopup("EQOLAYIJEANCHOR_PROFILE_CREATE", "ArenaClone")
-assert(ctx.ns.options.GetSelectedProfileName() == "ArenaClone", "expected create profile popup to select the new profile")
+assert(ctx.ns.profiles.GetActiveProfileName() == "Arena", "expected create profile not to switch the active profile")
+assert(profileDropdown.setting:GetValue() == "Arena", "expected dropdown to stay on the current active profile after create")
 local arenaClone = assert(ctx.ns.profiles.GetProfile("ArenaClone"))
-assert(arenaClone.castbar.x == 42, "expected create profile popup to clone the active profile")
+assert(arenaClone.castbar.x == 42, "expected create profile to clone the active profile")
 
 submitPopup("EQOLAYIJEANCHOR_PROFILE_DUPLICATE", "ArenaCopy")
-assert(ctx.ns.options.GetSelectedProfileName() == "ArenaCopy", "expected duplicate popup to select the duplicate")
+assert(ctx.ns.profiles.GetActiveProfileName() == "Arena", "expected duplicate profile not to switch the active profile")
 assert(ctx.ns.profiles.GetProfile("ArenaCopy") ~= nil, "expected duplicate profile to exist")
 
 submitPopup("EQOLAYIJEANCHOR_PROFILE_RENAME", "ArenaRenamed")
-assert(ctx.ns.options.GetSelectedProfileName() == "ArenaRenamed", "expected rename popup to keep the renamed profile selected")
-assert(ctx.ns.profiles.GetProfile("ArenaCopy") == nil, "expected old duplicate name to be removed after rename")
+assert(ctx.ns.profiles.GetActiveProfileName() == "ArenaRenamed", "expected rename to update the active profile name")
+assert(profileDropdown.setting:GetValue() == "ArenaRenamed", "expected dropdown to refresh after rename")
+assert(ctx.ns.profiles.GetProfile("Arena") == nil, "expected old active profile name to be removed after rename")
+assert(ctx.ns.profiles.GetProfile("ArenaCopy") ~= nil, "expected duplicate profile to remain after renaming the active profile")
 assert(ctx.ns.profiles.GetProfile("ArenaRenamed") ~= nil, "expected renamed profile to exist")
 
-switchProfileButton.click()
-assert(ctx.ns.profiles.GetActiveProfileName() == "ArenaRenamed", "expected switch profile button to update the active profile again")
-assert(activeProfileControl.setting:GetValue() == "ArenaRenamed", "expected active profile display to refresh after switching again")
-
 acceptPopup("EQOLAYIJEANCHOR_PROFILE_DELETE")
-assert(ctx.ns.profiles.GetProfile("ArenaRenamed") == nil, "expected deleted profile to be removed")
-assert(ctx.ns.options.GetSelectedProfileName() == ctx.ns.profiles.GetActiveProfileName(), "expected selected profile to follow the active profile after delete")
+assert(ctx.ns.profiles.GetProfile("ArenaRenamed") == nil, "expected deleted active profile to be removed")
+assert(profileDropdown.setting:GetValue() == ctx.ns.profiles.GetActiveProfileName(), "expected dropdown to follow the fallback active profile after delete")
